@@ -66,7 +66,11 @@ export const Storage = {
    */
   patch(fileName, patchData, callback) {
     this.get(fileName, (err, currentData) => {
-      const newData = Object.assign({}, currentData || {}, patchData);
+      // ES5 写法：4.0 引擎无 Object.assign（ES2015 API），白屏杀手
+      const newData = {};
+      const base = currentData || {};
+      Object.keys(base).forEach((k) => { newData[k] = base[k]; });
+      Object.keys(patchData).forEach((k) => { newData[k] = patchData[k]; });
       this.set(fileName, newData, callback);
     });
   },

@@ -96,7 +96,8 @@ export default {
     organLabels: [],
     organRatios: [],
     disclaimer: getText('pulse_theory_disclaimer'),
-    waveData: [],
+    // 首帧给平线兜底：低版本渲染器对空 datasets 处理不稳（见 SKILL 文档）
+    waveData: [{ strokeColor: '#B0A176', data: getPulseShape('flat') }],
     waveOpts: {
       xAxis: { min: 0, max: 160, display: false },
       yAxis: { min: 0, max: 100, display: false },
@@ -113,8 +114,9 @@ export default {
 
   onShow() {
     this._startClock();
-    // 测量返回后刷新
-    if (this._inited) this._loadData();
+    // 跳过首次 onShow（onInit 已加载）；测量返回/亮屏重进时再刷新
+    if (this._shown) this._loadData();
+    this._shown = true;
   },
 
   onHide() {
@@ -126,7 +128,6 @@ export default {
   },
 
   _loadData() {
-    this._inited = true;
     this._hrvStorage.init(() => {
       this._hrvStorage.getTodayData((todayData) => {
         let diag = null;
@@ -156,6 +157,11 @@ export default {
   },
 
   _render(diag) {
+    // 数据未变化（如亮屏重进触发的刷新）直接跳过，避免雷达重建闪烁
+    const renderTs = diag ? this.$app.$def.globalData.lastDiagnosisTs : 0;
+    if (this._renderedTs === renderTs) return;
+    this._renderedTs = renderTs;
+
     const hasData = !!(diag && diag.mainPulse);
     this.hasData = hasData;
     const mp = hasData ? diag.mainPulse : { type: 'flat', name: '--', nature: 'neutral' };

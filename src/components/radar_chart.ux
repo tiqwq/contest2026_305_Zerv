@@ -9,19 +9,16 @@
     <div
       class="seg-dot"
       for="{{ (i, d) in segDots }}"
-      tid="i"
       style="left: {{ d.x }}px; top: {{ d.y }}px;"
     ></div>
     <div
       class="vtx-dot"
       for="{{ (i, v) in vtxDots }}"
-      tid="i"
       style="left: {{ v.x }}px; top: {{ v.y }}px;"
     ></div>
     <text
       class="lb"
       for="{{ (i, t) in labelPos }}"
-      tid="i"
       style="left: {{ t.x }}px; top: {{ t.y }}px;"
     >{{ t.text }}</text>
   </div>
