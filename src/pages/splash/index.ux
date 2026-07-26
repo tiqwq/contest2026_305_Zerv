@@ -1,0 +1,132 @@
+<template>
+  <!--
+    开屏页（移植自 Zepp OS 版 page/home.js 入口分流逻辑）：
+    首屏图展示 → 判定状态：
+      1. 首次打开（oobe_done != '1'）→ OOBE 引导
+      2. 已激活 或 体验模式 → 主页
+      3. 未激活 → 显示"付费激活 / 免费体验"选择
+  -->
+  <stack class="root">
+    <image class="bg" src="/common/maixiang/first.png"></image>
+
+    <!-- 未激活时的选择层 -->
+    <div class="choice" if="{{ showChoice }}">
+      <text class="welcome">欢迎使用</text>
+      <input type="button" class="btn-pay" value="付费激活" onclick="onPay" />
+      <input type="button" class="btn-trial" value="免费体验" onclick="onTrial" />
+      <text class="tip">后续可在关于页查看激活入口</text>
+    </div>
+  </stack>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+import prompt from '@system.prompt'
+import { Storage } from '../../utils/storage'
+
+const SYSTEM_FILE = 'system.json';
+const SPLASH_MS = 900; // 首屏图停留时长
+
+export default {
+  private: {
+    showChoice: false
+  },
+
+  onInit() {
+    // 停留展示首屏图后再分流
+    setTimeout(() => this._route(), SPLASH_MS);
+  },
+
+  _route() {
+    storage.get({
+      key: 'oobe_done',
+      success: (oobeDone) => {
+        // 1. 首次打开 → OOBE
+        if (oobeDone !== '1') {
+          router.replace({ uri: 'pages/oobe' });
+          return;
+        }
+        // 2. 激活/体验状态判定
+        Storage.get(SYSTEM_FILE, (err, sys) => {
+          const activated = sys && sys.activation_status === 'activated';
+          const experience = sys && sys.experience_mode === '1';
+          if (activated || experience) {
+            router.replace({ uri: 'pages/home' });
+          } else {
+            // 3. 未激活 → 展示选择
+            this.showChoice = true;
+          }
+        });
+      },
+      fail: () => {
+        router.replace({ uri: 'pages/oobe' });
+      }
+    });
+  },
+
+  onPay() {
+    // Vela 版暂未接入激活系统（原版为本地设备码/激活码校验）
+    prompt.showToast({ message: '激活功能暂未开放' });
+  },
+
+  onTrial() {
+    Storage.patch(SYSTEM_FILE, { experience_mode: '1' }, () => {
+      router.replace({ uri: 'pages/home' });
+    });
+  }
+}
+</script>
+
+<style>
+.root {
+  width: 100%;
+  height: 100%;
+  background-color: #E8DCBE;
+}
+
+.bg {
+  width: 480px;
+  height: 480px;
+}
+
+.choice {
+  width: 480px;
+  height: 480px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 130px;
+}
+
+.welcome {
+  font-size: 36px;
+  color: #8A5A20;
+  margin-bottom: 24px;
+}
+
+.btn-pay {
+  width: 300px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #C0A050;
+  color: #1A1206;
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+
+.btn-trial {
+  width: 300px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #2A2018;
+  color: #C0A050;
+  font-size: 28px;
+}
+
+.tip {
+  margin-top: 16px;
+  font-size: 19px;
+  color: #8A6E4E;
+}
+</style>

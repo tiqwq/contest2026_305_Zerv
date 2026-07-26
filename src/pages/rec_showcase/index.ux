@@ -1,0 +1,115 @@
+<template>
+  <!-- 固定宣纸底（不随内容滚动，对齐原版 VIEW_CONTAINER 模式，避免平铺接缝） -->
+  <stack class="root">
+    <image class="bgfix" src="/common/maixiang/list1.png"></image>
+    <scroll class="scroll" scroll-y="true">
+      <div class="content">
+        <!-- 固定顶部标题：引子 + 主标题 + 金色饰线 -->
+        <text class="eyebrow">四时调养</text>
+        <text class="title">养生建议</text>
+        <div class="title-line"></div>
+
+        <!-- 建议卡片（每类一张：金色左饰条 + 分类名 + 建议正文；
+             注：Vela 字库无 emoji 字形，标题不用 emoji） -->
+        <div class="card" for="{{ (i, item) in recs }}" tid="i">
+          <div class="card-bar"></div>
+          <div class="card-body">
+            <text class="card-title">{{ item.category }}</text>
+            <text class="card-text">{{ item.advice }}</text>
+          </div>
+        </div>
+
+        <text class="disclaimer">本分析仅供参考，不构成医疗诊断</text>
+      </div>
+    </scroll>
+  </stack>
+</template>
+
+<script>
+import { getText } from '../../utils/strings'
+
+export default {
+  private: {
+    recs: []
+  },
+
+  onInit() {
+    // 有真实诊断时展示个性化建议，否则展示默认建议（与源版 rec_showcase 一致）
+    const diag = this.$app.$def.globalData.lastDiagnosis;
+    if (diag && diag.recommendations && diag.recommendations.length > 0) {
+      this.recs = diag.recommendations.map((r) => ({
+        category: r.category,
+        advice: r.advice
+      }));
+    } else {
+      this.recs = [
+        { category: getText('rec_cat_diet'), advice: getText('rec_diet_default') },
+        { category: getText('rec_cat_rest'), advice: getText('rec_rest_default') },
+        { category: getText('rec_cat_exercise'), advice: getText('rec_exercise_default') },
+        { category: getText('rec_cat_mind'), advice: getText('rec_mind_default') },
+      ];
+    }
+  }
+}
+</script>
+
+<style>
+.root {
+  width: 100%;
+  height: 100%;
+  background-color: #E8DCBE;
+}
+
+.bgfix {
+  width: 480px;
+  height: 480px;
+}
+
+.scroll {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+
+.content {
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  padding: 30px 45px 60px 45px;
+}
+
+.eyebrow { font-size: 20px; color: #9C8560; }
+.title { font-size: 36px; color: #8A5A20; margin-top: 4px; }
+.title-line {
+  width: 46px; height: 3px; border-radius: 2px;
+  background-color: #C0A050;
+  margin-top: 8px; margin-bottom: 22px;
+}
+
+.card {
+  width: 390px;
+  background-color: #D8CCB2;
+  border-radius: 22px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.card-bar {
+  width: 6px;
+  border-radius: 3px;
+  background-color: #C0A050;
+  margin-right: 16px;
+}
+
+.card-body { flex-direction: column; flex: 1; }
+.card-title { font-size: 28px; color: #8A5A20; margin-bottom: 8px; }
+.card-text { font-size: 24px; color: #5A4632; }
+
+.disclaimer {
+  width: 360px;
+  text-align: center;
+  font-size: 20px;
+  color: #9C8560;
+  margin-top: 12px;
+}
+</style>

@@ -1,0 +1,161 @@
+<template>
+  <!-- 关于页（古风版）：固定宣纸底 + 内容滚动，与原版 about.js 结构一致 -->
+  <stack class="root">
+    <image class="bgfix" src="/common/maixiang/list1.png"></image>
+    <scroll class="scroll" scroll-y="true">
+      <div class="content">
+        <!-- 图标 + 应用名 + 版本 -->
+        <image class="app-icon" src="/common/maixiang/icon.png"></image>
+        <text class="app-name">脉象</text>
+        <text class="app-ver">v1.0.0 (Vela)</text>
+
+        <!-- 简介卡 -->
+        <div class="card col">
+          <text class="desc">每日一刻 · 聆听身体的声音</text>
+          <text class="desc">以脉观身，四时调养</text>
+        </div>
+
+        <!-- 开发团队卡 -->
+        <div class="card col">
+          <div class="card-head">
+            <div class="head-bar"></div>
+            <text class="card-title">开发团队</text>
+          </div>
+          <div class="credit-row" for="{{ (i, item) in credits }}" tid="i">
+            <text class="credit-label">{{ item.label }}</text>
+            <text class="credit-value">{{ item.value }}</text>
+            <div class="credit-sep" if="{{ i < credits.length - 1 }}"></div>
+          </div>
+        </div>
+
+        <!-- 鸣谢卡 -->
+        <div class="card col">
+          <div class="card-head">
+            <div class="head-bar"></div>
+            <text class="card-title">特别鸣谢</text>
+          </div>
+          <text class="thanks-row" for="{{ (i, n) in thanks }}" tid="i">{{ n }}</text>
+        </div>
+
+        <text class="footer">本应用仅供健康科普参考，不构成医疗诊断</text>
+      </div>
+    </scroll>
+  </stack>
+</template>
+
+<script>
+export default {
+  private: {
+    credits: [
+      { label: 'project by', value: '@Zerv_Health' },
+      { label: 'developer', value: '@yiStar & @zxxhcj' },
+      { label: 'ui design', value: '@yiStar' },
+      { label: 'test support', value: '@ZHAO' },
+      { label: 'test support', value: '@zty' },
+      { label: 'test support', value: '@Lumia_Kcy' },
+    ],
+    thanks: ['@zxxhcj', '@zty']
+  }
+}
+</script>
+
+<style>
+.root {
+  width: 100%;
+  height: 100%;
+  background-color: #E8DCBE;
+}
+
+.bgfix {
+  width: 480px;
+  height: 480px;
+}
+
+.scroll {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+
+.content {
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  padding: 44px 40px 80px 40px;
+}
+
+.app-icon {
+  width: 128px;
+  height: 128px;
+  border-radius: 30px;
+}
+
+.app-name {
+  font-size: 44px;
+  color: #8A5A20;
+  margin-top: 10px;
+}
+
+.app-ver {
+  font-size: 24px;
+  color: #8A6E4E;
+  margin-top: 4px;
+  margin-bottom: 24px;
+}
+
+.card {
+  width: 400px;
+  background-color: #D8CCB2;
+  border-radius: 24px;
+  padding: 22px 28px;
+  margin-bottom: 20px;
+}
+
+.col { flex-direction: column; }
+
+.desc {
+  width: 100%;
+  text-align: center;
+  font-size: 26px;
+  color: #5A4632;
+}
+
+.card-head {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.head-bar {
+  width: 6px;
+  height: 28px;
+  border-radius: 3px;
+  background-color: #C0A050;
+  margin-right: 16px;
+}
+
+.card-title { font-size: 28px; color: #8A5A20; }
+
+/* 分隔线用独立 div：Vela 对单边 border 支持不完整（border-bottom 会画成整圈） */
+.credit-row {
+  flex-direction: column;
+  padding: 12px 0;
+}
+
+.credit-label { font-size: 22px; color: #8A6E4E; }
+.credit-value { font-size: 28px; color: #5A4632; margin-top: 4px; }
+.credit-sep { width: 100%; height: 2px; background-color: #C0A050; margin-top: 14px; opacity: 0.5; }
+
+.thanks-row {
+  font-size: 26px;
+  color: #5A4632;
+  height: 52px;
+}
+
+.footer {
+  width: 380px;
+  text-align: center;
+  font-size: 20px;
+  color: #8A6E4E;
+  margin-top: 10px;
+}
+</style>

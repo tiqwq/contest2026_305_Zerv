@@ -1,0 +1,335 @@
+<import name="radar-chart" src="../../components/radar_chart.ux"></import>
+
+<template>
+  <div class="page">
+    <!-- 宣纸背景（原版：Bg.png 首屏 + list.png 平铺，随内容滚动） -->
+    <image class="bgt" src="/common/maixiang/Bg.png" style="top: 0px;"></image>
+    <image class="bgt" src="/common/maixiang/list.png" style="top: 480px;"></image>
+    <image class="bgt" src="/common/maixiang/list.png" style="top: 960px;"></image>
+    <image class="bgt" src="/common/maixiang/list.png" style="top: 1440px;"></image>
+
+    <!-- 时钟 -->
+    <text class="clock">{{ clockText }}</text>
+
+    <!-- 脉名 -->
+    <!-- 有数据：大字脉名；无数据：小字提示（圆屏顶部窄，长文案需收窄换行） -->
+    <text class="pulse-name" if="{{ hasData }}" style="color: {{ pulseColor }};">{{ pulseName }}</text>
+    <text class="pulse-tip" if="{{ !hasData }}">{{ pulseName }}</text>
+
+    <!-- 脉形图（宣纸卡 + chart 双线脉波） -->
+    <div class="pulse-card">
+      <chart class="pulse-chart" type="line" options="{{ waveOpts }}" datasets="{{ waveData }}"></chart>
+    </div>
+
+    <!-- 体质卡：金色饰条 + 大字体质名 + 概述 -->
+    <div class="card const-card">
+      <div class="const-bar"></div>
+      <div class="const-body">
+        <text class="const-label">体质</text>
+        <text class="const-name">{{ constName }}</text>
+        <text class="const-desc" if="{{ constDesc }}">{{ constDesc }}</text>
+      </div>
+    </div>
+
+    <!-- 六维雷达卡（点击进入六维详情） -->
+    <div class="card" @click="goDim">
+      <div class="card-head">
+        <text class="card-title">六维脉象</text>
+        <text class="card-more">详情 ></text>
+      </div>
+      <radar-chart if="{{ radarReady }}" labels="{{ dimLabels }}" ratios="{{ dimRatios }}"></radar-chart>
+    </div>
+
+    <!-- 五脏雷达卡（点击进入五脏详情） -->
+    <div class="card" @click="goOrgan">
+      <div class="card-head">
+        <text class="card-title">五脏状态</text>
+        <text class="card-more">详情 ></text>
+      </div>
+      <radar-chart if="{{ radarReady }}" labels="{{ organLabels }}" ratios="{{ organRatios }}"></radar-chart>
+    </div>
+
+    <!-- 底部按钮 -->
+    <input type="button" class="btn-main" value="把 脉" onclick="goMeasure" />
+    <input type="button" class="btn-sub" value="脉象解读" if="{{ hasData }}" onclick="goExplain" />
+    <input type="button" class="btn-sub" value="养生建议" onclick="goRec" />
+    <input type="button" class="btn-sub" value="脉象原理" onclick="goTheory" />
+
+    <!-- 免责声明 -->
+    <text class="disclaimer">{{ disclaimer }}</text>
+
+    <!-- 关于 -->
+    <input type="button" class="btn-about" value="关 于" onclick="goAbout" />
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { HrvStorageManager } from '../../utils/hrv_storage_manager'
+import { diagnosePulse } from '../../utils/pulse_diagnosis'
+import { getPulseShape } from '../../utils/pulse_shape'
+import { getText } from '../../utils/strings'
+
+const DIM_KEYS = ['rate', 'rhythm', 'strength', 'width', 'tension', 'rsa'];
+
+// DEBUG：无真实测量数据时注入虚拟指标跑诊断引擎，全链路展示完整 UI
+const DEBUG = false;
+const DEBUG_METRICS = {
+  sdnn: 48.5, mean_rr: 833.3, mean_hr: 72.1,
+  patternEntropy: 1.82, lfRms: 2.1, vlfRms: 1.6,
+  sdann: 55, stress: 38, restingHr: 64,
+  hrStability: 8.2, sdnnSegments: [42.1, 47.3, 52.6],
+  sleepScore: 8, hrReserve: 46, rrCount: 160, rsaEiRatio: 1.08
+};
+
+export default {
+  private: {
+    clockText: '--:--',
+    hasData: false,
+    pulseName: '--',
+    pulseColor: '#8B7D6B',
+    constName: '--',
+    constDesc: '',
+    radarReady: false,
+    dimLabels: [],
+    dimRatios: [],
+    organLabels: [],
+    organRatios: [],
+    disclaimer: getText('pulse_theory_disclaimer'),
+    waveData: [],
+    waveOpts: {
+      xAxis: { min: 0, max: 160, display: false },
+      yAxis: { min: 0, max: 100, display: false },
+      series: { lineStyle: { width: 4 } }
+    }
+  },
+
+  onInit() {
+    this._hrvStorage = new HrvStorageManager();
+    this._clockTimer = null;
+    // 首次打开/激活状态分流已由 pages/splash 处理，此处直接加载数据
+    this._loadData();
+  },
+
+  onShow() {
+    this._startClock();
+    // 测量返回后刷新
+    if (this._inited) this._loadData();
+  },
+
+  onHide() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  onDestroy() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  _loadData() {
+    this._inited = true;
+    this._hrvStorage.init(() => {
+      this._hrvStorage.getTodayData((todayData) => {
+        let diag = null;
+        const g = this.$app.$def.globalData;
+        if (todayData && todayData.length > 0) {
+          const latest = todayData[todayData.length - 1];
+          if (latest && latest.metrics && latest.metrics.sdnn > 0) {
+            // 与源版一致：以 timestamp 为键缓存诊断结果
+            if (g.lastDiagnosis && g.lastDiagnosisTs === latest.timestamp) {
+              diag = g.lastDiagnosis;
+            } else {
+              diag = diagnosePulse(latest.metrics);
+              g.lastDiagnosis = diag;
+              g.lastDiagnosisTs = latest.timestamp;
+            }
+          }
+        }
+        // DEBUG：无真实数据时注入虚拟诊断（详情页经 globalData 同步展示）
+        if (!diag && DEBUG) {
+          diag = diagnosePulse(DEBUG_METRICS);
+          g.lastDiagnosis = diag;
+          g.lastDiagnosisTs = -1;
+        }
+        this._render(diag);
+      });
+    });
+  },
+
+  _render(diag) {
+    const hasData = !!(diag && diag.mainPulse);
+    this.hasData = hasData;
+    const mp = hasData ? diag.mainPulse : { type: 'flat', name: '--', nature: 'neutral' };
+
+    // 阳=金 阴=青 平=绿（与源版配色语义一致）
+    this.pulseColor = hasData
+      ? (mp.nature === 'yang' ? '#F0B848' : mp.nature === 'yin' ? '#60B0E0' : '#40D070')
+      : '#8B7D6B';
+    this.pulseName = hasData ? mp.name : getText('no_pulse_data');
+
+    // 脉形图：主脉线 + 回声线
+    const shape = getPulseShape(mp.type);
+    this.waveData = [
+      { strokeColor: hasData ? this.pulseColor : '#B0A176', data: shape },
+      { strokeColor: '#DCC58C', data: shape.map(v => Math.max(0, v - 8)) }
+    ];
+
+    // 体质
+    this.constName = hasData && diag.constitution ? diag.constitution.name : '--';
+    this.constDesc = hasData && diag.constitution ? (diag.constitution.description || '') : '';
+
+    // 六维/五脏雷达：labels + 0~1 ratios（无数据传空数组 → 只画网格）
+    // radarReady 先落 false 再置 true，强制重建子组件以刷新静态几何
+    this.radarReady = false;
+    this.dimLabels = DIM_KEYS.map((k) => getText('dim_' + k));
+    this.dimRatios = (hasData && diag.dimensions)
+      ? DIM_KEYS.map((k) => (diag.dimensions[k] && diag.dimensions[k].score ? diag.dimensions[k].score : 0) / 9)
+      : [];
+
+    const organList = hasData && diag.organAnalysis ? diag.organAnalysis : [];
+    const defaults = ['heart', 'liver', 'spleen', 'lung', 'kidney'];
+    this.organLabels = defaults.map((k, i) => (organList[i] ? organList[i].organ : getText('organ_name_' + k)));
+    this.organRatios = organList.length > 0
+      ? organList.map((o) => (o.score || 0) / 10)
+      : [];
+
+    setTimeout(() => { this.radarReady = true; }, 0);
+  },
+
+  _startClock() {
+    const tick = () => {
+      const n = new Date();
+      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 10000);
+  },
+
+  goMeasure() { router.push({ uri: 'pages/measurement' }); },
+  goDim() { router.push({ uri: 'pages/dim_showcase' }); },
+  goOrgan() { router.push({ uri: 'pages/organ_showcase' }); },
+  goRec() { router.push({ uri: 'pages/rec_showcase' }); },
+  goTheory() { router.push({ uri: 'pages/pulse_theory' }); },
+  goExplain() { router.push({ uri: 'pages/pulse_explain' }); },
+  goAbout() { router.push({ uri: 'pages/about' }); }
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  align-items: center;
+  background-color: #E8DCBE;
+  padding: 0 0 60px 0; 
+}
+
+.bgt {
+  position: absolute;
+  left: 0px;
+  width: 480px;
+  height: 480px;
+}
+
+.clock {
+  width: 100%;
+  text-align: center;
+  font-size: 32px;
+  color: #3A2A18;
+  margin-top: 20px;
+}
+
+.pulse-name {
+  width: 100%;
+  text-align: center;
+  font-size: 46px;
+  margin-top: 14px;
+  margin-bottom: 12px;
+}
+
+/* 无数据提示：窄宽度居中，避开圆屏顶部裁切区 */
+.pulse-tip {
+  width: 300px;
+  text-align: center;
+  font-size: 26px;
+  color: #8B7D6B;
+  margin-top: 16px;
+  margin-bottom: 14px;
+}
+
+.pulse-card {
+  width: 390px;
+  height: 150px;
+  background-color: #CDC0A5;
+  border-radius: 32px;
+  margin-bottom: 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulse-chart {
+  width: 360px;
+  height: 138px;
+}
+
+.card {
+  width: 390px;
+  background-color: #D8CCB2;
+  border-radius: 24px;
+  flex-direction: column;
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+
+.card-head {
+  width: 100%;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card-title { font-size: 28px; color: #5A3A1A; }
+.card-more { font-size: 23px; color: #B8860B; }
+
+.const-card { flex-direction: row; }
+.const-bar { width: 6px; height: 120px; border-radius: 3px; background-color: #F0B848; margin-right: 16px; }
+.const-body { flex-direction: column; flex: 1; }
+.const-label { font-size: 22px; color: #9C8560; }
+.const-name { font-size: 46px; color: #8A5A20; margin-top: 4px; }
+.const-desc { font-size: 23px; color: #6A4A28; margin-top: 8px; lines: 3; text-overflow: ellipsis; }
+
+.btn-main {
+  width: 390px;
+  height: 92px;
+  border-radius: 46px;
+  background-color: #F0B848;
+  color: #1A1206;
+  font-size: 34px;
+  margin-bottom: 16px;
+}
+
+.btn-sub {
+  width: 390px;
+  height: 82px;
+  border-radius: 41px;
+  background-color: #081A14;
+  color: #F0B848;
+  font-size: 30px;
+  margin-bottom: 14px;
+}
+
+.disclaimer {
+  width: 366px;
+  text-align: center;
+  font-size: 20px;
+  color: #A0B8A0;
+  margin-top: 10px;
+}
+
+.btn-about {
+  width: 280px;
+  height: 74px;
+  border-radius: 37px;
+  background-color: #D8CCB2;
+  color: #8A5A20;
+  font-size: 28px;
+  margin-top: 26px;
+}
+</style>
