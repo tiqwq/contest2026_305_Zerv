@@ -1,0 +1,282 @@
+<template>
+  <div class="page">
+    <image class="bg" src="/common/maixiang/Mbg.png"></image>
+    <text class="clock">{{ clockText }}</text>
+
+    <!-- 测量进度环 + 倒计时 -->
+    <stack class="ring-box">
+      <progress class="ring-bg" type="arc" percent="100"></progress>
+      <progress class="ring-fg" type="arc" percent="{{ ringPercent }}"></progress>
+      <text class="countdown">{{ countdownText }}</text>
+    </stack>
+
+    <!-- 实时 BPM -->
+    <text class="bpm">{{ bpmText }}</text>
+    <text class="hint" if="{{ isMeasuring }}">保持静止...</text>
+
+    <!-- 开始按钮 -->
+    <input type="button" class="btn-start" value="开始把脉" if="{{ !isMeasuring }}" onclick="start" />
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import health from '@service.health'
+import brightness from '@system.brightness'
+import { HRVCalculator, calcTcmMetrics, calcRsaEiRatio } from '../../utils/hrv_calc'
+import { HrvStorageManager } from '../../utils/hrv_storage_manager'
+
+const DURATION_SEC = 180;
+const DATA_TYPES = { HEART_RATE: 0, SPO2: 6, STRESS: 9 };
+
+export default {
+  private: {
+    clockText: '--:--',
+    countdownText: '3:00',
+    ringPercent: 100,
+    bpmText: '',
+    isMeasuring: false
+  },
+
+  onInit() {
+    this._hrvCalc = new HRVCalculator();
+    this._hrvStorage = new HrvStorageManager();
+    this._hrvStorage.init(() => {});
+    this._countdownTimer = null;
+    this._hrTimer = null;
+    this._fallbackDelay = null;
+    this._clockTimer = null;
+    this._subscribed = false;
+    this._sampleCount = 0;
+    // 双通路采集：subscribe 优先（大赛镜像 1Hz 流式最优），
+    // 5 秒无回调自动切 getHr() 轮询（量产固件实测唯一可用通路）
+  },
+
+  onShow() {
+    this._startClock();
+    brightness.setKeepScreenOn({ keepScreenOn: true });
+  },
+
+  onHide() {
+    brightness.setKeepScreenOn({ keepScreenOn: false });
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  onDestroy() {
+    this._teardown();
+    brightness.setKeepScreenOn({ keepScreenOn: false });
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  _startClock() {
+    const tick = () => {
+      const n = new Date();
+      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 30000);
+  },
+
+  start() {
+    if (this.isMeasuring) return;
+    this.isMeasuring = true;
+    this._hrvCalc.start();
+    this._sampleCount = 0;
+
+    // 倒计时先行：任何采集异常都不能阻塞测量流程
+    let rem = DURATION_SEC;
+    const tick = () => {
+      const m = Math.floor(rem / 60), s = rem % 60;
+      this.countdownText = m + ':' + ('0' + s).slice(-2);
+      this.ringPercent = Math.round((rem / DURATION_SEC) * 100);
+    };
+    tick();
+    this._countdownTimer = setInterval(() => {
+      rem--;
+      tick();
+      if (rem <= 0) this.finish();
+    }, 1000);
+
+    // 通路1：subscribeSample（大赛镜像支持 1Hz 流式，数据质量最优）
+    try {
+      health.subscribeSample({
+        dataType: DATA_TYPES.HEART_RATE,
+        callback: (sample) => {
+          if (!sample || sample.value == null) return;
+          this._sampleCount++;
+          this._hrvCalc.pushBpm(sample.value);
+          if (sample.value > 0) this.bpmText = 'BPM: ' + sample.value;
+        },
+        fail: (data, code) => {
+          console.log('[measurement] subscribe fail code=' + code);
+        }
+      });
+      this._subscribed = true;
+    } catch (e) {
+      console.log('[measurement] subscribe unavailable: ' + e);
+    }
+
+    // 通路2：5 秒无回调 → 自动切 getHr() 1s 轮询（量产固件真实通路，非模拟）
+    this._fallbackDelay = setTimeout(() => {
+      if (this._sampleCount > 0) return;
+      console.log('[measurement] no subscribe callbacks, switch to getHr polling');
+      if (this._subscribed) {
+        try { health.unsubscribeSample({ dataType: DATA_TYPES.HEART_RATE }); } catch (e) {}
+        this._subscribed = false;
+      }
+      this._hrTimer = setInterval(() => {
+        let bpm = 0;
+        try { bpm = health.getHr(); } catch (e) { bpm = 0; }
+        if (bpm > 0) {
+          this._hrvCalc.pushBpm(bpm);
+          this.bpmText = 'BPM: ' + bpm;
+        }
+      }, 1000);
+    }, 5000);
+  },
+
+  finish() {
+    this._teardown();
+    this._hrvCalc.stop();
+    this.isMeasuring = false;
+
+    const metrics = this._hrvCalc.getHrvMetrics();
+    if (!metrics) {
+      this.countdownText = '测量失败';
+      setTimeout(() => { router.replace({ uri: 'pages/home' }); }, 1500);
+      return;
+    }
+
+    const rr = this._hrvCalc.rrIntervals;
+    const tcm = calcTcmMetrics(rr) || {};
+    const rsaEiRatio = calcRsaEiRatio(this._hrvCalc.bpmBuffer);
+
+    // Vela 无全天心率/睡眠历史 API：sdann/sleepScore/hrReserve 置 0，
+    // 规则引擎对 0 值回退为“未知”（中性 5 分），restingHr 回退 mean_hr。
+    const record = {
+      metrics: {
+        sdnn: metrics.sdnn,
+        mean_rr: metrics.mean_rr,
+        mean_hr: metrics.mean_hr,
+        patternEntropy: metrics.patternEntropy,
+        lfRms: metrics.lfRms,
+        vlfRms: metrics.vlfRms,
+        sdann: 0,
+        stress: 0,
+        restingHr: 0,
+        hrStability: tcm.hrStability || 0,
+        sdnnSegments: tcm.sdnnSegments || [],
+        sleepScore: 0,
+        hrReserve: 0,
+        rrCount: tcm.rrCount || 0,
+        rsaEiRatio,
+      },
+      timestamp: Date.now()
+    };
+
+    console.log('[measurement] Record to save: ' + JSON.stringify(record));
+
+    this._hrvStorage.addRecord(record, (error) => {
+      if (error) {
+        this.countdownText = '保存失败，请重试';
+        console.log('[measurement] save failed: ' + JSON.stringify(error));
+        return;
+      }
+      // 使首页缓存失效，返回后重新计算规则结果
+      this.$app.$def.globalData.lastDiagnosisTs = 0;
+      this.countdownText = '测量完成';
+      setTimeout(() => { router.replace({ uri: 'pages/home' }); }, 1200);
+    });
+  },
+
+  _teardown() {
+    if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
+    if (this._fallbackDelay) { clearTimeout(this._fallbackDelay); this._fallbackDelay = null; }
+    if (this._hrTimer) { clearInterval(this._hrTimer); this._hrTimer = null; }
+    if (this._subscribed) {
+      try { health.unsubscribeSample({ dataType: DATA_TYPES.HEART_RATE }); } catch (e) {}
+      this._subscribed = false;
+    }
+  }
+}
+</script>
+
+<style>
+.page {
+  flex-direction: column;
+  align-items: center;
+  background-color: #E8DCBE;
+}
+
+.bg {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 480px;
+  height: 480px;
+}
+
+.clock {
+  width: 100%;
+  text-align: center;
+  font-size: 35px;
+  color: #3A2A18;
+  margin-top: 16px;
+}
+
+.ring-box {
+  width: 280px;
+  height: 280px;
+  margin-top: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring-bg {
+  width: 280px;
+  height: 280px;
+  color: #081A14;
+  stroke-width: 18px;
+  start-angle: 0deg;
+  total-angle: 360deg;
+}
+
+.ring-fg {
+  width: 280px;
+  height: 280px;
+  color: #F0B848;
+  stroke-width: 18px;
+  start-angle: 0deg;
+  total-angle: 360deg;
+}
+
+.countdown {
+  font-size: 48px;
+  color: #04120E;
+}
+
+.bpm {
+  margin-top: 20px;
+  font-size: 26px;
+  color: #04120E;
+  height: 36px;
+}
+
+.hint {
+  margin-top: 6px;
+  font-size: 22px;
+  color: #8B7D6B;
+}
+
+.btn-start {
+  position: absolute;
+  left: 140px;
+  top: 384px;
+  width: 200px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #081A14;
+  color: #F0B848;
+  font-size: 30px;
+}
+</style>

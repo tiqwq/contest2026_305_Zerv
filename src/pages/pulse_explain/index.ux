@@ -1,0 +1,168 @@
+<template>
+  <!-- 固定宣纸底 + 内容滚动（避免 list1.png 平铺接缝) -->
+  <stack class="root">
+    <image class="bgfix" src="/common/maixiang/list1.png"></image>
+    <scroll class="scroll" scroll-y="true">
+      <div class="content">
+        <text class="clock">{{ clockText }}</text>
+        <text class="title">结果说明</text>
+
+        <div class="card" if="{{ hasData }}">
+          <text class="explain">{{ explainText }}</text>
+        </div>
+        <text class="empty" if="{{ !hasData }}">暂无把脉数据</text>
+
+        <text class="disclaimer">以上解读仅供参考，不具备医疗诊断效力。如有健康疑虑，请咨询专业医师。</text>
+      </div>
+    </scroll>
+  </stack>
+</template>
+
+<script>
+import { HrvStorageManager } from '../../utils/hrv_storage_manager'
+import { analyzePulseRules } from '../../utils/pulse_diagnosis'
+
+// 白话解读生成（移植自 Zepp OS 版 pulse_explain.js）
+function plainExplain(d) {
+  var mp = d.mainPulse, dm = d.dimensions, L = [];
+  var pn = mp.name || '未知脉象';
+
+  L.push('本次心率样本经经验规则映射为“' + pn + '”。');
+  L.push('');
+  L.push('这是传统脉象标签的科普性模拟，不能替代中医切脉，也不表示疾病或体质诊断。');
+
+  if (dm.rate && (dm.rate.category === 'shuo' || dm.rate.category === 'pian_shuo')) {
+    L.push('');
+    L.push('当前采样心率相对偏快。运动、紧张、饮品和环境都可能造成短时变化，建议静坐后复测。');
+  } else if (dm.rate && dm.rate.category === 'chi') {
+    L.push('');
+    L.push('当前采样心率相对偏慢。个体差异和运动习惯都会影响结果，请结合连续趋势观察。');
+  }
+
+  if (dm.tension && (dm.tension.category === 'xian' || dm.tension.category === 'pian_xian')) {
+    L.push('');
+    L.push('本次波动在规则模型中偏紧，可先休息、放松呼吸，再进行一次测量。');
+  }
+
+  return L.join('\n');
+}
+
+export default {
+  private: {
+    clockText: '--:--',
+    hasData: false,
+    explainText: ''
+  },
+
+  onInit() {
+    this._clockTimer = null;
+    const g = this.$app.$def.globalData;
+
+    // 优先复用全局规则结果，否则读今日数据重新计算
+    if (g.lastDiagnosis) {
+      this.hasData = true;
+      this.explainText = plainExplain(g.lastDiagnosis);
+      return;
+    }
+
+    const hrvStorage = new HrvStorageManager();
+    hrvStorage.init(() => {
+      hrvStorage.getTodayData((td) => {
+        if (td && td.length > 0) {
+          const latest = td[td.length - 1];
+          if (latest && latest.metrics && latest.metrics.sdnn > 0) {
+            const diag = analyzePulseRules(latest.metrics);
+            g.lastDiagnosis = diag;
+            g.lastDiagnosisTs = latest.timestamp;
+            this.hasData = true;
+            this.explainText = plainExplain(diag);
+          }
+        }
+      });
+    });
+  },
+
+  onShow() {
+    const tick = () => {
+      const n = new Date();
+      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
+  },
+
+  onHide() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  onDestroy() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  }
+}
+</script>
+
+<style>
+.root {
+  width: 100%;
+  height: 100%;
+  background-color: #E8DCBE;
+}
+
+.bgfix {
+  width: 480px;
+  height: 480px;
+}
+
+.scroll {
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+
+.content {
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 60px 0;
+}
+
+.clock {
+  width: 100%;
+  text-align: center;
+  font-size: 28px;
+  color: #C09040;
+  margin-top: 20px;
+}
+
+.title {
+  width: 100%;
+  text-align: center;
+  font-size: 28px;
+  color: #6B5335;
+  margin-top: 4px;
+  margin-bottom: 16px;
+}
+
+.card {
+  width: 390px;
+  background-color: #D8CCB2;
+  border-radius: 26px;
+  padding: 24px 20px;
+}
+
+.explain { font-size: 28px; color: #3C2818; }
+
+.empty {
+  margin-top: 140px;
+  font-size: 32px;
+  color: #6B5335;
+}
+
+.disclaimer {
+  width: 350px;
+  text-align: center;
+  font-size: 18px;
+  color: #6B5335;
+  margin-top: 20px;
+}
+</style>

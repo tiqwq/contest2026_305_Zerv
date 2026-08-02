@@ -1,0 +1,53 @@
+<template>
+  <!--
+    大赛开源版开屏页：
+    首屏图展示后，首次打开进入 OOBE，其他情况直接进入主页。
+  -->
+  <stack class="root">
+    <image class="bg" src="/common/maixiang/first.png"></image>
+  </stack>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+
+const SPLASH_MS = 900; // 首屏图停留时长
+
+export default {
+  onInit() {
+    // 停留展示首屏图后再分流
+    setTimeout(() => this._route(), SPLASH_MS);
+  },
+
+  _route() {
+    storage.get({
+      key: 'oobe_done',
+      success: (oobeDone) => {
+        // 1. 首次打开 → OOBE
+        if (oobeDone !== '1') {
+          router.replace({ uri: 'pages/oobe' });
+          return;
+        }
+        router.replace({ uri: 'pages/home' });
+      },
+      fail: () => {
+        router.replace({ uri: 'pages/oobe' });
+      }
+    });
+  }
+}
+</script>
+
+<style>
+.root {
+  width: 100%;
+  height: 100%;
+  background-color: #E8DCBE;
+}
+
+.bg {
+  width: 480px;
+  height: 480px;
+}
+</style>
