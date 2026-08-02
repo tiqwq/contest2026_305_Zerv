@@ -1,0 +1,3 @@
+- [EasyStress is the reference](feedback_storage_standard.md) — EasyStress is stable and correct, do not modify it
+- [No unsolicited refactors](feedback_no_unsolicited_refactors.md) — report findings, ask before editing storage/architecture
+- [GRADKIENT_POLYLINE 不是 typo](reference_gradkient_polyline.md) — ZeppOS SDK 真实常量带 K，勿改

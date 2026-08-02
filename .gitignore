@@ -1,5 +1,8 @@
-node_modules
-dist
-build
-.history
+node_modules/
+dist/
+build/
+.history/
 package-lock.json
+*.log
+.env
+.env.local
