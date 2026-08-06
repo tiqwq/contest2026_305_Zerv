@@ -17,7 +17,8 @@ Copyright 2026 MaiXiang Project Team (@yiStar & @zxxhcj)
    - 宣纸/云纹/首屏等古风背景图（src/common/maixiang/Bg.png、
      Mbg.png、list.png、list1.png、first.png、icon.png）：
      由 Google Gemini AI 生成，团队进行裁剪与色调调整，
-     无第三方版权归属。
+     生成记录与人工处理过程由团队留存。上述内容按本项目
+     Apache License 2.0 条款随参赛版提供。
    - 雷达图网格（radar_grid5.png / radar_grid6.png）：
      由本工程 tools/gen_radar_grid.js 脚本程序化生成。
 
@@ -27,9 +28,11 @@ Copyright 2026 MaiXiang Project Team (@yiStar & @zxxhcj)
    编写，仅作健康科普用途，不构成医疗诊断。
 
 4. 算法与代码
-   HRV 计算（SDNN/符号动力学熵/LF-VLF 频段近似/RSA E-I ratio）、
-   脉象规则引擎（六维分类/十四脉匹配/体质与五脏评分）均为团队
-   原创实现，自 Zepp OS 版《脉象》（同团队作品）移植而来。
+   心率采样统计、换算间期统计（SDNN/符号动力学熵/LF-VLF
+   频段近似/RSA E-I ratio）与脉象规则引擎（六维分类/十四脉
+   匹配/体质与五脏平衡评分）均为团队原创实现，自 Zepp OS 版
+   《脉象》（同团队作品）移植而来。当前版本不读取原始 PPG，
+   换算间期也不等同于医疗设备提供的逐搏 RR 间期。
 
 5. 开发方式
    本项目采用 AI Coding 辅助开发，开发日志见 docs/DEV_LOG.md，

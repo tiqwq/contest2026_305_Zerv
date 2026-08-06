@@ -21,13 +21,13 @@
 
 <script>
 import router from '@system.router'
-import health from '@service.health'
 import brightness from '@system.brightness'
 import { HRVCalculator, calcTcmMetrics, calcRsaEiRatio } from '../../utils/hrv_calc'
 import { HrvStorageManager } from '../../utils/hrv_storage_manager'
+import { getRecent, subscribe, unsubscribe, DATA_TYPES } from '../../utils/health'
 
 const DURATION_SEC = 180;
-const DATA_TYPES = { HEART_RATE: 0, SPO2: 6, STRESS: 9 };
+const HR = DATA_TYPES.HEART_RATE;
 
 export default {
   private: {
@@ -43,13 +43,17 @@ export default {
     this._hrvStorage = new HrvStorageManager();
     this._hrvStorage.init(() => {});
     this._countdownTimer = null;
-    this._hrTimer = null;
-    this._fallbackDelay = null;
     this._clockTimer = null;
-    this._subscribed = false;
     this._sampleCount = 0;
-    // 双通路采集：subscribe 优先（大赛镜像 1Hz 流式最优），
-    // 5 秒无回调自动切 getHr() 轮询（量产固件实测唯一可用通路）
+    // 采集遵循 Vela 5.0 官方 health-demo 模式：
+    // subscribeSample 流式订阅在 onReady 一次性建立，贯穿页面生命周期，
+    // 仅在 onDestroy 退订；后台保活由 manifest config.background 承担。
+  },
+
+  onReady() {
+    // 冷启动一次性建立数据流：补一帧最近值 + 开始订阅。
+    this._readRecent();
+    this._subscribeHr();
   },
 
   onShow() {
@@ -58,12 +62,14 @@ export default {
   },
 
   onHide() {
+    // 5.0 后台模式下订阅不断，重新亮屏 onShow 即可恢复，无需重建。
     brightness.setKeepScreenOn({ keepScreenOn: false });
     if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
   },
 
   onDestroy() {
     this._teardown();
+    unsubscribe(HR);
     brightness.setKeepScreenOn({ keepScreenOn: false });
     if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
   },
@@ -75,6 +81,30 @@ export default {
     };
     tick();
     if (!this._clockTimer) this._clockTimer = setInterval(tick, 30000);
+  },
+
+  _readRecent() {
+    getRecent([HR]).then((list) => {
+      const s = list && list[0];
+      if (s && s.value > 0) this.bpmText = 'BPM: ' + s.value;
+    });
+  },
+
+  _subscribeHr() {
+    subscribe(
+      HR,
+      (sample) => this._onSample(sample.value),
+      (err) => {
+        console.log('[measurement] subscribe fail code=' + err.code + ', unsupported=' + err.unsupported);
+      }
+    );
+  },
+
+  _onSample(value) {
+    if (value == null || value <= 0) return;
+    this._sampleCount++;
+    if (this.isMeasuring) this._hrvCalc.pushBpm(value);
+    this.bpmText = 'BPM: ' + value;
   },
 
   start() {
@@ -96,43 +126,6 @@ export default {
       tick();
       if (rem <= 0) this.finish();
     }, 1000);
-
-    // 通路1：subscribeSample（大赛镜像支持 1Hz 流式，数据质量最优）
-    try {
-      health.subscribeSample({
-        dataType: DATA_TYPES.HEART_RATE,
-        callback: (sample) => {
-          if (!sample || sample.value == null) return;
-          this._sampleCount++;
-          this._hrvCalc.pushBpm(sample.value);
-          if (sample.value > 0) this.bpmText = 'BPM: ' + sample.value;
-        },
-        fail: (data, code) => {
-          console.log('[measurement] subscribe fail code=' + code);
-        }
-      });
-      this._subscribed = true;
-    } catch (e) {
-      console.log('[measurement] subscribe unavailable: ' + e);
-    }
-
-    // 通路2：5 秒无回调 → 自动切 getHr() 1s 轮询（量产固件真实通路，非模拟）
-    this._fallbackDelay = setTimeout(() => {
-      if (this._sampleCount > 0) return;
-      console.log('[measurement] no subscribe callbacks, switch to getHr polling');
-      if (this._subscribed) {
-        try { health.unsubscribeSample({ dataType: DATA_TYPES.HEART_RATE }); } catch (e) {}
-        this._subscribed = false;
-      }
-      this._hrTimer = setInterval(() => {
-        let bpm = 0;
-        try { bpm = health.getHr(); } catch (e) { bpm = 0; }
-        if (bpm > 0) {
-          this._hrvCalc.pushBpm(bpm);
-          this.bpmText = 'BPM: ' + bpm;
-        }
-      }, 1000);
-    }, 5000);
   },
 
   finish() {
@@ -152,7 +145,7 @@ export default {
     const rsaEiRatio = calcRsaEiRatio(this._hrvCalc.bpmBuffer);
 
     // Vela 无全天心率/睡眠历史 API：sdann/sleepScore/hrReserve 置 0，
-    // 诊断引擎对 0 值自动回退为"未知"（中性 5 分），restingHr 回退 mean_hr。
+    // 规则引擎对 0 值回退为“未知”（中性 5 分），restingHr 回退 mean_hr。
     const record = {
       metrics: {
         sdnn: metrics.sdnn,
@@ -174,10 +167,15 @@ export default {
       timestamp: Date.now()
     };
 
-    console.log('[HRV] Record to save: ' + JSON.stringify(record));
+    console.log('[measurement] Record to save: ' + JSON.stringify(record));
 
-    this._hrvStorage.addRecord(record, () => {
-      // 使首页缓存失效，返回后重新诊断
+    this._hrvStorage.addRecord(record, (error) => {
+      if (error) {
+        this.countdownText = '保存失败，请重试';
+        console.log('[measurement] save failed: ' + JSON.stringify(error));
+        return;
+      }
+      // 使首页缓存失效，返回后重新计算规则结果
       this.$app.$def.globalData.lastDiagnosisTs = 0;
       this.countdownText = '测量完成';
       setTimeout(() => { router.replace({ uri: 'pages/home' }); }, 1200);
@@ -186,12 +184,6 @@ export default {
 
   _teardown() {
     if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
-    if (this._fallbackDelay) { clearTimeout(this._fallbackDelay); this._fallbackDelay = null; }
-    if (this._hrTimer) { clearInterval(this._hrTimer); this._hrTimer = null; }
-    if (this._subscribed) {
-      try { health.unsubscribeSample({ dataType: DATA_TYPES.HEART_RATE }); } catch (e) {}
-      this._subscribed = false;
-    }
   }
 }
 </script>

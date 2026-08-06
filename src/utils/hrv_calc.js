@@ -1,11 +1,12 @@
 /**
- * hrv_calc.js — HRV 计算层（纯 JS，移植自 Zepp OS 版 page/measurement.js）
+ * hrv_calc.js — 心率换算间期统计层（纯 JS，移植自 Zepp OS 版）
  * 采集侧改由 service.health subscribeSample(HEART_RATE) 逐秒喂入 pushBpm(bpm)。
+ * 注意：这里的间期由 60000 / BPM 换算，不是逐搏测得的 RR，也不应作为临床 HRV。
  */
 
 export class HRVCalculator {
   constructor() {
-    this.rrIntervals = [];
+    this.rrIntervals = [];     // BPM 换算间期；保留字段名以兼容既有存储结构
     this.bpmBuffer = [];       // 原始 BPM 序列，用于熵/频段/RSA 计算
     this.isCollecting = false;
     this.filterEnabled = true;
@@ -21,7 +22,7 @@ export class HRVCalculator {
   pushBpm(bpm) {
     if (!this.isCollecting) return;
     if (bpm <= 0 || bpm === 255) return;
-    if (bpm < 35 || bpm > 200) return; // 生理范围过滤：剔除明显伪迹
+    if (bpm < 35 || bpm > 200) return; // 输入范围过滤：剔除明显异常值
 
     this.bpmBuffer.push(bpm);
 
@@ -135,7 +136,7 @@ export class HRVCalculator {
   }
 }
 
-// TCM 分段 SDNN + 心率稳定性
+// 换算间期分段波动 + 心率稳定性
 export function calcTcmMetrics(rr) {
   if (!rr || rr.length < 2) return null;
   const hrVals = rr.map(r => 60000 / r);
@@ -153,7 +154,7 @@ export function calcTcmMetrics(rr) {
   return { hrStability: +hrStab.toFixed(2), sdnnSegments: segs, rrCount: rr.length };
 }
 
-// RSA: 从 BPM 序列提取 E/I ratio（呼吸-心率耦合指数）
+// 展示性呼吸尺度波动近似：从 BPM 序列提取 E/I ratio
 export function calcRsaEiRatio(bpmSeq) {
   if (!bpmSeq || bpmSeq.length < 30) return 0;
 

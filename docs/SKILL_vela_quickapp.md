@@ -64,7 +64,8 @@ openvela 快应用组件集无 canvas。自绘图形按"静态/动态"拆分处�
   permissions `hapjs.permission.HEALTH` + （后台采集时）
   config.background.features。
 - HEART_RATE 1Hz 逐秒回调 `{timeStamp, value}`，等价于逐拍 BPM 流，
-  可直接推算 RR 间期做 HRV；冷启动先 getRecentSamples 补一帧避免
+  可由 BPM 换算“估算间期”用于展示性波动统计，但这不是逐搏测得的
+  RR 间期，不能表述为临床 HRV；冷启动先 getRecentSamples 补一帧避免
   首屏空白。
 - 大赛模拟器镜像内置 31 天真人数据回放（HR 48~182 循环），
   无真机传感器也可全链路演示。

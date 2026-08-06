@@ -16,7 +16,6 @@
     { "name": "system.storage" },
     { "name": "system.file" },
     { "name": "system.brightness" },
-    { "name": "system.prompt" },
     { "name": "service.health" }
   ],
   "permissions": [

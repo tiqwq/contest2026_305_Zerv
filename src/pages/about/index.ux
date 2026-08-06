@@ -12,7 +12,17 @@
         <!-- 简介卡 -->
         <div class="card col">
           <text class="desc">每日一刻 · 聆听身体的声音</text>
-          <text class="desc">以脉观身，四时调养</text>
+          <text class="desc">设备端规则分析与传统脉学科普</text>
+        </div>
+
+        <!-- 项目来源与参赛版边界 -->
+        <div class="card col">
+          <div class="card-head">
+            <div class="head-bar"></div>
+            <text class="card-title">项目说明</text>
+          </div>
+          <text class="note">本项目与团队自有 Zepp OS 版《脉象》同步开发，并针对 openvela 快应用框架独立完成界面与平台接口适配。</text>
+          <text class="note">当前结果基于心率采样的换算统计与经验规则，不读取原始 PPG，不构成医疗诊断。</text>
         </div>
 
         <!-- 开发团队卡 -->
@@ -118,6 +128,13 @@ export default {
   text-align: center;
   font-size: 26px;
   color: #5A4632;
+}
+
+.note {
+  width: 100%;
+  font-size: 23px;
+  color: #5A4632;
+  margin-bottom: 10px;
 }
 
 .card-head {

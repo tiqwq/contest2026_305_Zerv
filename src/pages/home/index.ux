@@ -43,7 +43,7 @@
     <!-- 五脏雷达卡（点击进入五脏详情） -->
     <div class="card" @click="goOrgan">
       <div class="card-head">
-        <text class="card-title">五脏状态</text>
+        <text class="card-title">五脏关联模型</text>
         <text class="card-more">详情 ></text>
       </div>
       <radar-chart if="{{ radarReady }}" labels="{{ organLabels }}" ratios="{{ organRatios }}"></radar-chart>
@@ -52,7 +52,7 @@
     <!-- 底部按钮 -->
     <input type="button" class="btn-main" value="把 脉" onclick="goMeasure" />
     <input type="button" class="btn-sub" value="脉象解读" if="{{ hasData }}" onclick="goExplain" />
-    <input type="button" class="btn-sub" value="养生建议" onclick="goRec" />
+    <input type="button" class="btn-sub" value="养生建议" if="{{ hasData }}" onclick="goRec" />
     <input type="button" class="btn-sub" value="脉象原理" onclick="goTheory" />
 
     <!-- 免责声明 -->
@@ -66,13 +66,13 @@
 <script>
 import router from '@system.router'
 import { HrvStorageManager } from '../../utils/hrv_storage_manager'
-import { diagnosePulse } from '../../utils/pulse_diagnosis'
+import { analyzePulseRules } from '../../utils/pulse_diagnosis'
 import { getPulseShape } from '../../utils/pulse_shape'
 import { getText } from '../../utils/strings'
 
 const DIM_KEYS = ['rate', 'rhythm', 'strength', 'width', 'tension', 'rsa'];
 
-// DEBUG：无真实测量数据时注入虚拟指标跑诊断引擎，全链路展示完整 UI
+// 仅供开发调试；参赛交付保持 false，避免把虚拟数据呈现为测量结果
 const DEBUG = false;
 const DEBUG_METRICS = {
   sdnn: 48.5, mean_rr: 833.3, mean_hr: 72.1,
@@ -96,8 +96,7 @@ export default {
     organLabels: [],
     organRatios: [],
     disclaimer: getText('pulse_theory_disclaimer'),
-    // 首帧给平线兜底：低版本渲染器对空 datasets 处理不稳（见 SKILL 文档）
-    waveData: [{ strokeColor: '#B0A176', data: getPulseShape('flat') }],
+    waveData: [],
     waveOpts: {
       xAxis: { min: 0, max: 160, display: false },
       yAxis: { min: 0, max: 100, display: false },
@@ -108,15 +107,14 @@ export default {
   onInit() {
     this._hrvStorage = new HrvStorageManager();
     this._clockTimer = null;
-    // 首次打开/激活状态分流已由 pages/splash 处理，此处直接加载数据
+    // 首次打开分流已由 pages/splash 处理，此处直接加载数据
     this._loadData();
   },
 
   onShow() {
     this._startClock();
-    // 跳过首次 onShow（onInit 已加载）；测量返回/亮屏重进时再刷新
-    if (this._shown) this._loadData();
-    this._shown = true;
+    // 测量返回后刷新
+    if (this._inited) this._loadData();
   },
 
   onHide() {
@@ -128,6 +126,7 @@ export default {
   },
 
   _loadData() {
+    this._inited = true;
     this._hrvStorage.init(() => {
       this._hrvStorage.getTodayData((todayData) => {
         let diag = null;
@@ -135,19 +134,19 @@ export default {
         if (todayData && todayData.length > 0) {
           const latest = todayData[todayData.length - 1];
           if (latest && latest.metrics && latest.metrics.sdnn > 0) {
-            // 与源版一致：以 timestamp 为键缓存诊断结果
+            // 与源版一致：以 timestamp 为键缓存规则分析结果
             if (g.lastDiagnosis && g.lastDiagnosisTs === latest.timestamp) {
               diag = g.lastDiagnosis;
             } else {
-              diag = diagnosePulse(latest.metrics);
+              diag = analyzePulseRules(latest.metrics);
               g.lastDiagnosis = diag;
               g.lastDiagnosisTs = latest.timestamp;
             }
           }
         }
-        // DEBUG：无真实数据时注入虚拟诊断（详情页经 globalData 同步展示）
+        // DEBUG：无真实数据时注入虚拟规则结果（详情页经 globalData 同步展示）
         if (!diag && DEBUG) {
-          diag = diagnosePulse(DEBUG_METRICS);
+          diag = analyzePulseRules(DEBUG_METRICS);
           g.lastDiagnosis = diag;
           g.lastDiagnosisTs = -1;
         }
@@ -157,11 +156,6 @@ export default {
   },
 
   _render(diag) {
-    // 数据未变化（如亮屏重进触发的刷新）直接跳过，避免雷达重建闪烁
-    const renderTs = diag ? this.$app.$def.globalData.lastDiagnosisTs : 0;
-    if (this._renderedTs === renderTs) return;
-    this._renderedTs = renderTs;
-
     const hasData = !!(diag && diag.mainPulse);
     this.hasData = hasData;
     const mp = hasData ? diag.mainPulse : { type: 'flat', name: '--', nature: 'neutral' };

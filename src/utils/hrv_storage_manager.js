@@ -161,21 +161,27 @@ export class HrvStorageManager {
   }
 
   /**
-   * 添加一条 HRV 记录（总是添加到今日数据）
+   * 添加一条 HRV 记录。写入失败时回滚内存追加，避免界面误以为已保存。
+   * 回调签名：(error) — 成功 error=null，失败 error={code, message}
    */
   addRecord(record, callback) {
     this._loadTodayData(() => {
-      if (!this.todayCache) {
-        this.todayCache = [];
-      }
+      if (!this.todayCache) this.todayCache = []
 
-      this.todayCache.push(record);
+      this.todayCache.push(record)
 
-      // 保存到今日文件
-      Storage.set(TODAY_FILE, this.todayCache, () => {
-        if (callback) callback();
-      });
-    });
+      Storage.set(TODAY_FILE, this.todayCache, (error) => {
+        if (error) {
+          // 写盘失败，撤销本次内存追加
+          this.todayCache.pop()
+          console.log('[HRV-STORAGE] addRecord failed: ' + JSON.stringify(error))
+          if (callback) callback(error)
+          return
+        }
+        console.log('[HRV-STORAGE] addRecord success, count=' + this.todayCache.length)
+        if (callback) callback(null)
+      })
+    })
   }
 
   /**

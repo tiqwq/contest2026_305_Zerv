@@ -10,11 +10,11 @@
         <text class="slogan">每日一刻 · 聆听身体的声音</text>
       </div>
 
-      <!-- 屏1: AI 脉诊 -->
+      <!-- 屏1: 脉象观察 -->
       <div class="screen">
         <image class="bg" src="/common/maixiang/list1.png"></image>
-        <text class="eyebrow">AI 脉诊</text>
-        <text class="title">三分钟 静心一诊</text>
+        <text class="eyebrow">脉象观察</text>
+        <text class="title">三分钟 静心一测</text>
         <div class="title-line"></div>
         <div class="card">
           <div class="feat-row" for="{{ (i, line) in featLines }}" tid="i">
@@ -24,11 +24,11 @@
         </div>
       </div>
 
-      <!-- 屏2: 五脏评估 -->
+      <!-- 屏2: 五脏平衡 -->
       <div class="screen">
         <image class="bg" src="/common/maixiang/list1.png"></image>
-        <text class="eyebrow">五脏评估</text>
-        <text class="title">照见五脏平衡</text>
+        <text class="eyebrow">五脏平衡</text>
+        <text class="title">观察平衡趋势</text>
         <div class="title-line"></div>
         <div class="card">
           <div class="organ-row" for="{{ (i, o) in organs }}" tid="i">
@@ -38,47 +38,34 @@
         </div>
       </div>
 
-      <!-- 屏3: 生辰节律 -->
-      <div class="screen">
-        <image class="bg" src="/common/maixiang/list1.png"></image>
-        <text class="eyebrow">生辰</text>
-        <text class="title">读懂你的节律</text>
-        <div class="title-line"></div>
-        <div class="card">
-          <text class="birth-tip">记录生辰，解读情绪、体力与智力的自然周期，让每一次调养更契合你的身体节奏。</text>
-        </div>
-        <text class="sub-tip">可随时在「设置」中完善</text>
-      </div>
-
-      <!-- 屏4: 开启入口 -->
+      <!-- 屏3: 开启入口 -->
       <div class="screen">
         <image class="bg" src="/common/maixiang/list1.png"></image>
         <text class="eyebrow">准备就绪</text>
         <text class="title">开启脉象之旅</text>
         <div class="title-line"></div>
-        <input type="button" class="btn-gold" value="开始体验" onclick="startExperience" />
+        <input type="button" class="btn-gold" value="开始使用" onclick="startApp" />
         <text class="sub-tip">静心片刻，即刻感受脉息</text>
       </div>
     </swiper>
 
     <!-- 下一步按钮（末屏隐藏，固定在底部） -->
-    <input type="button" class="btn-next" value="下一步" if="{{ col < 4 }}" onclick="next" />
+    <input type="button" class="btn-next" value="下一步" if="{{ col < 3 }}" onclick="next" />
   </div>
 </template>
 
 <script>
 import router from '@system.router'
 import storage from '@system.storage'
-import { Storage } from '../../utils/storage'
 
 export default {
   private: {
     col: 0,
     featLines: [
-      '静坐片刻，轻采心率脉息',
-      '十四经典脉象，智能辨识',
-      '六维量化，照见气血盈亏',
-      '融汇脉学，生成专属脉案',
+      '静坐片刻，记录心率变化',
+      '十四种脉象，规则化解读',
+      '六维指标，观察变化趋势',
+      '融汇脉学，生成科普参考',
     ],
     organs: [
       { n: '心', d: '主血脉，藏神明' },
@@ -94,17 +81,15 @@ export default {
   },
 
   next() {
-    if (this.col < 4) this.col = this.col + 1;
+    if (this.col < 3) this.col = this.col + 1;
   },
 
-  startExperience() {
+  startApp() {
     storage.set({
       key: 'oobe_done',
       value: '1',
       complete: () => {
-        Storage.patch('system.json', { experience_mode: '1' }, () => {
-          router.replace({ uri: 'pages/home' });
-        });
+        router.replace({ uri: 'pages/home' });
       }
     });
   }
@@ -171,8 +156,6 @@ export default {
 .organ-n { width: 52px; font-size: 30px; color: #8A5A20; }
 .organ-d { font-size: 22px; color: #5A4632; }
 
-/* 屏3 生辰 */
-.birth-tip { font-size: 23px; color: #5A4632; text-align: center; }
 .sub-tip { font-size: 19px; color: #9C8560; margin-top: 16px; }
 
 /* 屏4 CTA */
@@ -190,7 +173,7 @@ export default {
 .btn-next {
   position: absolute;
   left: 155px;
-  bottom: 56px;
+  bottom: 30px;
   width: 170px;
   height: 66px;
   border-radius: 33px;

@@ -33,7 +33,7 @@
 <script>
 import { getText } from '../../utils/strings'
 
-// 演示数据（与 Zepp OS 版 organ_showcase.js 一致），有真实诊断时覆盖
+// 布局基准数据；页面仅在有真实测量后的规则结果时展示
 const DEMO = [
   { key: 'heart',  score: 8.5, status: 'he',   tint: '#C04040' },
   { key: 'liver',  score: 6.0, status: 'ping', tint: '#6B8E23' },
@@ -49,7 +49,7 @@ function gaugeColor(score) {
   return '#A23B2E';
 }
 
-// 分值 → 状态键（与诊断引擎 analyzeOrgans 阈值一致）
+// 分值 → 关联等级键（与规则引擎 analyzeOrgans 阈值一致）
 function statusKeyOf(score) {
   if (score >= 7) return 'he';
   if (score >= 5) return 'ping';
@@ -68,8 +68,9 @@ export default {
     const real = diag && diag.organAnalysis ? diag.organAnalysis : null;
     this._animated = {};
     this._timer = null;
+    this._delayTimer = null;
 
-    // 无真实诊断数据：显示空态，不用演示分值糊弄用户
+    // 无真实规则结果：显示空态，不用演示分值糊弄用户
     this.hasData = !!(real && real.length > 0);
     if (!this.hasData) return;
 
@@ -93,34 +94,50 @@ export default {
   },
 
   onShow() {
-    this._animate(0);
+    this._scheduleAnimate(0, 80);
   },
 
   onDestroy() {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this._delayTimer) { clearTimeout(this._delayTimer); this._delayTimer = null; }
   },
 
   onChange(e) {
-    this._animate(e.index);
+    this._scheduleAnimate(e.index, 180);
   },
 
-  // 前景弧 ease-out 动画（700ms），每页只动一次
+  _scheduleAnimate(idx, delay) {
+    if (this._delayTimer) clearTimeout(this._delayTimer);
+    this._delayTimer = setTimeout(() => {
+      this._delayTimer = null;
+      this._animate(idx);
+    }, delay);
+  },
+
+  // 固定关键帧；避开 swiper 位移动画并降低整页重绘频率
   _animate(idx) {
     if (idx == null || idx < 0 || idx >= this.organs.length) return;
     if (this._animated[idx]) return;
     this._animated[idx] = true;
 
     const target = this.organs[idx].target;
-    const startTs = Date.now();
+    const frames = [0.20, 0.38, 0.54, 0.67, 0.78, 0.86, 0.92, 0.96, 0.99, 1];
+    let frame = 0;
     if (this._timer) clearInterval(this._timer);
     this._timer = setInterval(() => {
-      const t = Math.min(1, (Date.now() - startTs) / 700);
-      const eased = 1 - Math.pow(1 - t, 3);
       const list = this.organs.slice();
-      list[idx] = Object.assign({}, list[idx], { pct: Math.round(target * eased) });
+      const item = {};
+      const source = list[idx];
+      Object.keys(source).forEach((key) => { item[key] = source[key]; });
+      item.pct = Math.round(target * frames[frame]);
+      list[idx] = item;
       this.organs = list;
-      if (t >= 1) { clearInterval(this._timer); this._timer = null; }
-    }, 32);
+      frame++;
+      if (frame >= frames.length) {
+        clearInterval(this._timer);
+        this._timer = null;
+      }
+    }, 48);
   }
 }
 </script>
@@ -193,8 +210,8 @@ export default {
 
 .card-title { font-size: 28px; }
 .sep { width: 100%; height: 2px; background-color: #C4B594; margin-top: 12px; margin-bottom: 14px; }
-/* 固定两行：最佳阅读密度，超出省略 */
-.card-desc { font-size: 26px; color: #5A4632; lines: 2; text-overflow: ellipsis; }
+/* 文案本身按两行阅读量精简，完整显示，不做省略截断 */
+.card-desc { width: 310px; font-size: 26px; color: #5A4632; }
 
 .root { width: 100%; height: 100%; }
 
