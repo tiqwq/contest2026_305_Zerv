@@ -45,6 +45,11 @@ export default {
     this._build();
   },
 
+  // props（labels/ratios）变化时重建，确保空数据/新数据都正确渲染网格与数据点
+  onPropsChange() {
+    this._build();
+  },
+
   // 顶点坐标：-90° 起顺时针均分
   _pts(n, r, ratios) {
     const pts = [];

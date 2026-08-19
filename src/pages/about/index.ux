@@ -4,6 +4,8 @@
     <image class="bgfix" src="/common/maixiang/list1.png"></image>
     <scroll class="scroll" scroll-y="true">
       <div class="content">
+        <!-- 顶部时间 -->
+        <text class="clock">{{ clockText }}</text>
         <!-- 图标 + 应用名 + 版本 -->
         <image class="app-icon" src="/common/maixiang/icon.png"></image>
         <text class="app-name">脉象</text>
@@ -56,6 +58,7 @@
 <script>
 export default {
   private: {
+    clockText: '--:--',
     credits: [
       { label: 'project by', value: '@Zerv_Health' },
       { label: 'developer', value: '@yiStar & @zxxhcj' },
@@ -65,6 +68,23 @@ export default {
       { label: 'test support', value: '@Lumia_Kcy' },
     ],
     thanks: ['@zxxhcj', '@zty']
+  },
+
+  onShow() {
+    const tick = () => {
+      const n = new Date();
+      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
+  },
+
+  onHide() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  onDestroy() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
   }
 }
 </script>
@@ -92,6 +112,14 @@ export default {
   flex-direction: column;
   align-items: center;
   padding: 44px 40px 80px 40px;
+}
+
+.clock {
+  width: 100%;
+  text-align: center;
+  font-size: 28px;
+  color: #C09040;
+  margin-bottom: 18px;
 }
 
 .app-icon {

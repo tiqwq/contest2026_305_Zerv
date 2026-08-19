@@ -84,6 +84,8 @@
       </div>
     </scroll>
     </swiper>
+    <!-- 顶部时间（浮层，不随翻页） -->
+    <text class="clock">{{ clockText }}</text>
   </stack>
 </template>
 
@@ -100,7 +102,25 @@ const PULSE_NATURE = {
 export default {
   private: {
     t: {},
-    pulses: []
+    pulses: [],
+    clockText: '--:--'
+  },
+
+  onShow() {
+    const tick = () => {
+      const n = new Date();
+      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
+  },
+
+  onHide() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  onDestroy() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
   },
 
   onInit() {
@@ -174,11 +194,23 @@ export default {
   flex-direction: column;
 }
 
+.clock {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 26px;
+  color: #C09040;
+  background-color: #E8DCBE;
+  padding-bottom: 2px;
+}
+
 .col {
   flex-direction: column;
   align-items: center;
   width: 100%;
-  padding: 60px 38px 20px 38px;
+  padding: 84px 38px 20px 38px;
 }
 
 .card {

@@ -156,13 +156,13 @@ export default {
         vlfRms: metrics.vlfRms,
         sdann: 0,
         stress: 0,
-        restingHr: 0,
+        restingHr: metrics.mean_hr || 0,
         hrStability: tcm.hrStability || 0,
         sdnnSegments: tcm.sdnnSegments || [],
         sleepScore: 0,
         hrReserve: 0,
         rrCount: tcm.rrCount || 0,
-        rsaEiRatio,
+        rsaEiRatio: rsaEiRatio || 0,
       },
       timestamp: Date.now()
     };

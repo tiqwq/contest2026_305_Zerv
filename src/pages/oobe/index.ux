@@ -51,16 +51,19 @@
 
     <!-- 下一步按钮（末屏隐藏，固定在底部） -->
     <input type="button" class="btn-next" value="下一步" if="{{ col < 3 }}" onclick="next" />
+    <!-- 顶部时间（浮层） -->
+    <text class="clock">{{ clockText }}</text>
   </div>
 </template>
 
 <script>
 import router from '@system.router'
-import storage from '@system.storage'
+import { Storage } from '../../utils/storage'
 
 export default {
   private: {
     col: 0,
+    clockText: '--:--',
     featLines: [
       '静坐片刻，记录心率变化',
       '十四种脉象，规则化解读',
@@ -80,17 +83,40 @@ export default {
     this.col = e.index;
   },
 
+  onShow() {
+    const tick = () => {
+      const n = new Date();
+      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
+  },
+
+  onHide() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
+  onDestroy() {
+    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+  },
+
   next() {
     if (this.col < 3) this.col = this.col + 1;
   },
 
   startApp() {
-    storage.set({
-      key: 'oobe_done',
-      value: '1',
-      complete: () => {
-        router.replace({ uri: 'pages/home' });
+    // OOBE 标记与业务记录统一使用 @system.file，避开 Vela 4.0
+    // 上 @system.storage 的持久化不稳定问题。
+    Storage.patch('system.json', {
+      oobe_done: '1'
+    }, (error) => {
+      if (error) {
+        console.log('[OOBE-FILE] write failed: ' + JSON.stringify(error));
+        return;
       }
+
+      console.log('[OOBE-FILE] write success');
+      router.replace({ uri: 'pages/home' });
     });
   }
 }
@@ -117,6 +143,17 @@ export default {
   align-items: center;
   background-color: #E8DCBE;
   padding-top: 46px;
+}
+
+.clock {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 26px;
+  color: #C09040;
+  background-color: transparent;
 }
 
 .bg {

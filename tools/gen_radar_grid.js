@@ -103,8 +103,8 @@ function pts(n, r) {
 
 function drawGrid(n) {
   const buf = makeCanvas();
-  const C_OUTER = [0xB0, 0xA2, 0x83, 255];
-  const C_SOFT = [0xCB, 0xBD, 0x9C, 255];
+  const C_OUTER = [0x6A, 0x4A, 0x28, 255];  // 深棕（与卡片标题色一致，确保在米金背景上可见）
+  const C_SOFT = [0x8A, 0x76, 0x58, 255];   // 中棕（内环/轴线，略浅于外框）
   const outer = pts(n, R);
   const inner = pts(n, R * 0.5);
   for (let i = 0; i < n; i++) {

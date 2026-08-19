@@ -10,9 +10,10 @@
 
 <script>
 import router from '@system.router'
-import storage from '@system.storage'
+import { Storage } from '../../utils/storage'
 
 const SPLASH_MS = 900; // 首屏图停留时长
+const SYSTEM_FILE = 'system.json'
 
 export default {
   onInit() {
@@ -21,19 +22,14 @@ export default {
   },
 
   _route() {
-    storage.get({
-      key: 'oobe_done',
-      success: (oobeDone) => {
-        // 1. 首次打开 → OOBE
-        if (oobeDone !== '1') {
-          router.replace({ uri: 'pages/oobe' });
-          return;
-        }
-        router.replace({ uri: 'pages/home' });
-      },
-      fail: () => {
+    Storage.get(SYSTEM_FILE, (error, systemData) => {
+      // 文件不存在或读取失败都按首次启动处理，避免进入半初始化状态。
+      if (error || !systemData || systemData.oobe_done !== '1') {
         router.replace({ uri: 'pages/oobe' });
+        return;
       }
+
+      router.replace({ uri: 'pages/home' });
     });
   }
 }

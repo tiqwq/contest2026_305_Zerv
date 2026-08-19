@@ -1,96 +1,115 @@
 /**
- * storage.js — JSON 文件存取层（串行队列版）
+ * Vela 4.0 JSON 文件存储层。
  *
- * 核心设计：同一文件的读/写/删除严格串行，杜绝并发 I/O 丢数据。
- * 内存缓存加速读取，写入后同步更新缓存，回调只在真实 I/O 完成后触发。
+ * 仅使用 @system.file，不依赖在部分 4.0 固件中不稳定的 @system.storage。
+ * 同一文件的读、写、删除操作严格串行，回调只在真实 I/O 完成后触发。
  */
 import file from '@system.file'
 
-const ROOT = 'internal://files/'
-const cache = {}       // fileName → parsed data
-const ready = {}       // fileName → boolean（缓存是否有效）
-const queues = {}      // fileName → { running, jobs[] }
+const ROOT_URI = 'internal://files/'
+const cache = {}
+const cacheReady = {}
+const queues = {}
 
-// ── 路径工具 ──────────────────────────────────────────────
-function safe(name) {
-  return String(name || '').replace(/\\/g, '/').replace(/^\/+/, '')
+function safeName(fileName) {
+  return String(fileName || '').replace(/\\/g, '/').replace(/^\/+/, '')
 }
 
-function uri(name) {
-  return ROOT + safe(name)
+function uriOf(fileName) {
+  return ROOT_URI + safeName(fileName)
 }
 
-function invoke(cb, err, val) {
-  if (cb) cb(err, val)
+function invoke(callback, error, value) {
+  if (callback) callback(error, value)
 }
 
-// ── 串行队列 ──────────────────────────────────────────────
-// 每个文件一个独立队列，保证同一文件的 I/O 操作不重叠
-function getQueue(name) {
-  if (!queues[name]) queues[name] = { running: false, jobs: [] }
+function queueFor(fileName) {
+  const name = safeName(fileName)
+  if (!queues[name]) {
+    queues[name] = {
+      running: false,
+      jobs: []
+    }
+  }
   return queues[name]
 }
 
-function enqueue(name, label, op) {
-  const q = getQueue(name)
-  q.jobs.push({ label, op })
+function enqueue(fileName, label, operation) {
+  const name = safeName(fileName)
+  const queue = queueFor(name)
+  queue.jobs.push({
+    label,
+    operation
+  })
+  console.log('[FILE-STORAGE] enqueue ' + label + ' ' + name + ', pending=' + queue.jobs.length)
   drain(name)
 }
 
-function drain(name) {
-  const q = getQueue(name)
-  if (q.running || !q.jobs.length) return
+function drain(fileName) {
+  const queue = queueFor(fileName)
+  if (queue.running || queue.jobs.length === 0) return
 
-  q.running = true
-  const job = q.jobs.shift()
+  const job = queue.jobs.shift()
+  queue.running = true
+  console.log('[FILE-STORAGE] begin ' + job.label + ' ' + fileName)
 
-  let done = false
-  const finish = () => {
-    if (done) return
-    done = true
-    q.running = false
-    drain(name)  // 递归处理下一个 job
+  let finished = false
+  const done = function () {
+    if (finished) return
+    finished = true
+    queue.running = false
+    console.log('[FILE-STORAGE] end ' + job.label + ' ' + fileName + ', remain=' + queue.jobs.length)
+    drain(fileName)
   }
 
   try {
-    job.operation(finish)
-  } catch (e) {
-    console.log(`[storage] ${job.label} exception: ${e}`)
-    finish()
+    job.operation(done)
+  } catch (error) {
+    console.log('[FILE-STORAGE] exception ' + job.label + ' ' + fileName + ': ' + error)
+    done()
   }
 }
 
-// ── 读操作（带缓存） ─────────────────────────────────────
-function readOp(name, callback) {
-  enqueue(name, 'read', (done) => {
-    // 缓存命中直接返回
-    if (ready[name]) {
-      invoke(callback, null, cache[name])
+function readJob(fileName, callback) {
+  enqueue(fileName, 'read', function (done) {
+    if (cacheReady[fileName]) {
+      console.log('[FILE-STORAGE] cache hit ' + fileName)
+      invoke(callback, null, cache[fileName])
       done()
       return
     }
 
     file.readText({
-      uri: uri(name),
+      uri: uriOf(fileName),
       encoding: 'UTF-8',
-      success: (result) => {
+      success: function (result) {
         try {
-          cache[name] = JSON.parse(result.text)
-          ready[name] = true
-          invoke(callback, null, cache[name])
-        } catch (e) {
-          invoke(callback, { code: 'JSON_PARSE', message: String(e) }, null)
+          const parsed = JSON.parse(result.text)
+          cache[fileName] = parsed
+          cacheReady[fileName] = true
+          console.log('[FILE-STORAGE] read success ' + fileName + ', bytes=' + result.text.length)
+          invoke(callback, null, parsed)
+        } catch (error) {
+          console.log('[FILE-STORAGE] JSON parse failed ' + fileName + ': ' + error)
+          invoke(callback, {
+            code: 'JSON_PARSE',
+            message: String(error)
+          }, null)
         }
         done()
       },
-      fail: (_data, code) => {
-        // 文件不存在视为 null，不算错误
+      fail: function (data, code) {
         if (code === 301) {
-          cache[name] = null
-          ready[name] = true
+          console.log('[FILE-STORAGE] file not found ' + fileName)
+          cache[fileName] = null
+          cacheReady[fileName] = true
           invoke(callback, null, null)
         } else {
-          invoke(callback, { code, message: String(_data || 'read failed') }, null)
+          console.log('[FILE-STORAGE] read failed ' + fileName + ', code=' + code + ', data=' + data)
+          invoke(callback, {
+            code,
+            message: String(data || 'read failed')
+          }, null)
         }
         done()
       }
@@ -98,96 +117,110 @@ function readOp(name, callback) {
   })
 }
 
-// ── 公开 API ──────────────────────────────────────────────
 export const Storage = {
-  /**
-   * 写入 JSON 文件；data 为 null 时删除文件。
-   * 回调 (error, value)：成功 error=null, value=true；失败 error={code,message}
-   */
   set(fileName, data, callback) {
-    const name = safe(fileName)
-    if (!name) return invoke(callback, { code: 202, message: 'empty file name' }, false)
-
-    if (data === null) return this.remove(name, callback)
-
-    let text
-    try {
-      text = JSON.stringify(data)
-    } catch (e) {
-      return invoke(callback, { code: 'JSON_STRINGIFY', message: String(e) }, false)
+    const name = safeName(fileName)
+    if (!name) {
+      invoke(callback, { code: 202, message: 'empty file name' }, false)
+      return
     }
 
-    enqueue(name, 'write', (done) => {
+    if (data === null) {
+      this.remove(name, callback)
+      return
+    }
+
+    let text = ''
+    try {
+      text = JSON.stringify(data)
+    } catch (error) {
+      console.log('[FILE-STORAGE] stringify failed ' + name + ': ' + error)
+      invoke(callback, {
+        code: 'JSON_STRINGIFY',
+        message: String(error)
+      }, false)
+      return
+    }
+
+    enqueue(name, 'write', function (done) {
       file.writeText({
-        uri: uri(name),
+        uri: uriOf(name),
         text,
         encoding: 'UTF-8',
         append: false,
-        success: () => {
+        success: function () {
           cache[name] = data
-          ready[name] = true
+          cacheReady[name] = true
+          console.log('[FILE-STORAGE] write success ' + name + ', bytes=' + text.length)
           invoke(callback, null, true)
           done()
         },
-        fail: (_data, code) => {
-          invoke(callback, { code, message: String(_data || 'write failed') }, false)
+        fail: function (failureData, code) {
+          console.log('[FILE-STORAGE] write failed ' + name + ', code=' + code + ', data=' + failureData)
+          invoke(callback, {
+            code,
+            message: String(failureData || 'write failed')
+          }, false)
           done()
         }
       })
     })
   },
 
-  /**
-   * 读取 JSON 文件。内存命中直接返回，未命中读文件并回填缓存。
-   * 回调 (error, data)：文件不存在时 (null, null)，不算错误。
-   */
   get(fileName, callback) {
-    const name = safe(fileName)
-    if (!name) return invoke(callback, { code: 202, message: 'empty file name' }, null)
-    readOp(name, callback)
+    const name = safeName(fileName)
+    if (!name) {
+      invoke(callback, { code: 202, message: 'empty file name' }, null)
+      return
+    }
+    readJob(name, callback)
   },
 
-  /**
-   * 合并更新 JSON 对象文件的若干字段。
-   */
   patch(fileName, patchData, callback) {
-    const name = safe(fileName)
-    this.get(name, (err, current) => {
-      if (err) return invoke(callback, err, false)
-      this.set(name, Object.assign({}, current || {}, patchData || {}), callback)
+    const name = safeName(fileName)
+    this.get(name, (error, currentData) => {
+      if (error) {
+        invoke(callback, error, false)
+        return
+      }
+      const nextData = Object.assign({}, currentData || {}, patchData || {})
+      this.set(name, nextData, callback)
     })
   },
 
-  /**
-   * 读取 JSON 对象文件中的单个字段。
-   */
   getField(fileName, field, callback) {
-    this.get(fileName, (err, data) => {
-      if (err) return invoke(callback, err, null)
-      invoke(callback, null, data && typeof data === 'object' ? data[field] : null)
+    this.get(fileName, function (error, data) {
+      if (error) {
+        invoke(callback, error, null)
+        return
+      }
+      const value = data && typeof data === 'object' ? data[field] : null
+      invoke(callback, null, value)
     })
   },
 
-  /**
-   * 删除文件（内存与磁盘同步清除）。
-   */
   remove(fileName, callback) {
-    const name = safe(fileName)
-    if (!name) return invoke(callback, { code: 202, message: 'empty file name' }, false)
+    const name = safeName(fileName)
+    if (!name) {
+      invoke(callback, { code: 202, message: 'empty file name' }, false)
+      return
+    }
 
-    enqueue(name, 'delete', (done) => {
+    enqueue(name, 'delete', function (done) {
       file.delete({
-        uri: uri(name),
-        success: () => {
+        uri: uriOf(name),
+        success: function () {
           delete cache[name]
-          delete ready[name]
+          delete cacheReady[name]
+          console.log('[FILE-STORAGE] delete success ' + name)
           invoke(callback, null, true)
           done()
         },
-        fail: () => {
-          // 删除不存在的文件视为成功（目标状态已达成）
+        fail: function (failureData, code) {
           delete cache[name]
-          delete ready[name]
+          delete cacheReady[name]
+          // 删除不存在的文件也视为目标状态已达成。
+          console.log('[FILE-STORAGE] delete finished ' + name + ', code=' + code)
           invoke(callback, null, true)
           done()
         }
@@ -195,16 +228,16 @@ export const Storage = {
     })
   },
 
-  /**
-   * 清除内存缓存（单文件或全量），下次读取会重新从磁盘加载。
-   */
   clearCache(fileName) {
     if (fileName) {
-      const name = safe(fileName)
+      const name = safeName(fileName)
       delete cache[name]
-      delete ready[name]
-    } else {
-      Object.keys(cache).forEach((k) => { delete cache[k]; delete ready[k] })
+      delete cacheReady[name]
+      return
     }
+    Object.keys(cache).forEach(function (name) {
+      delete cache[name]
+      delete cacheReady[name]
+    })
   }
 }

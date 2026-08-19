@@ -1,5 +1,5 @@
 /**
- * 脉象规则分析引擎 (Pulse Rule Analysis Engine)
+ * 脉象诊断引擎 (Pulse Diagnosis Engine)
  * 所有文案经 getText() 解析，msgid 以 pulse_/const_/organ_/dim_/rec_/trend_ 为前缀。
  * openvela 版：getText 由 utils/strings.js 提供（本地文案字典），算法与 Zepp OS 版一致。
  */
@@ -97,11 +97,11 @@ function classifyTension(stress, sdnn) {
 // ============================================================================
 function organDescKey(organ, status) {
   const map = {
-    '心': { '较高': 'organ_desc_heart_he', '中等': 'organ_desc_heart_ping', '偏低': 'organ_desc_heart_xu', '较低': 'organ_desc_heart_kui' },
-    '肝': { '较高': 'organ_desc_liver_he', '中等': 'organ_desc_liver_ping', '偏低': 'organ_desc_liver_xu', '较低': 'organ_desc_liver_kui' },
-    '脾': { '较高': 'organ_desc_spleen_he', '中等': 'organ_desc_spleen_ping', '偏低': 'organ_desc_spleen_xu', '较低': 'organ_desc_spleen_kui' },
-    '肺': { '较高': 'organ_desc_lung_he', '中等': 'organ_desc_lung_ping', '偏低': 'organ_desc_lung_xu', '较低': 'organ_desc_lung_kui' },
-    '肾': { '较高': 'organ_desc_kidney_he', '中等': 'organ_desc_kidney_ping', '偏低': 'organ_desc_kidney_xu', '较低': 'organ_desc_kidney_kui' },
+    '心': { '和': 'organ_desc_heart_he', '平': 'organ_desc_heart_ping', '虚': 'organ_desc_heart_xu', '亏': 'organ_desc_heart_kui' },
+    '肝': { '和': 'organ_desc_liver_he', '平': 'organ_desc_liver_ping', '虚': 'organ_desc_liver_xu', '亏': 'organ_desc_liver_kui' },
+    '脾': { '和': 'organ_desc_spleen_he', '平': 'organ_desc_spleen_ping', '虚': 'organ_desc_spleen_xu', '亏': 'organ_desc_spleen_kui' },
+    '肺': { '和': 'organ_desc_lung_he', '平': 'organ_desc_lung_ping', '虚': 'organ_desc_lung_xu', '亏': 'organ_desc_lung_kui' },
+    '肾': { '和': 'organ_desc_kidney_he', '平': 'organ_desc_kidney_ping', '虚': 'organ_desc_kidney_xu', '亏': 'organ_desc_kidney_kui' },
   };
   return (map[organ] && map[organ][status]) || '';
 }
@@ -149,11 +149,11 @@ function matchPulseType(dimensions, metrics) {
 
   const PULSE_TYPES = resolvePulseTypes();
   const info = PULSE_TYPES[bestType];
-  return { type: bestType, name: info.name, description: info.desc, nature: info.nature, matchScore: Math.round(bestScore * 100) / 100, allScores: scores };
+  return { type: bestType, name: info.name, description: info.desc, nature: info.nature, confidence: Math.round(bestScore * 100) / 100, allScores: scores };
 }
 
 // ============================================================================
-// 体质标签映射（科普模型，不是体质诊断）
+// 体质判定
 // ============================================================================
 function assessConstitution(dimensions, mainPulse, metrics) {
   const { stress, sdnn, restingHr } = metrics;
@@ -303,7 +303,7 @@ function classifyRsa(eiRatio) {
 // ============================================================================
 // 主入口
 // ============================================================================
-export function analyzePulseRules(metrics) {
+export function diagnosePulse(metrics) {
   const { 
     sdnn = 0, sdann = 0, restingHr = 0, avgHr = 0, mean_hr = 0, 
     hrStability = 0, sdnnSegments = [], stress = 0, sleepScore = 0, 

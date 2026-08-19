@@ -13,7 +13,6 @@
     { "name": "system.app" },
     { "name": "system.device" },
     { "name": "system.configuration" },
-    { "name": "system.storage" },
     { "name": "system.file" },
     { "name": "system.brightness" },
     { "name": "service.health" }
