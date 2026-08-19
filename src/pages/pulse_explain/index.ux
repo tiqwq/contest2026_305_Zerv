@@ -4,7 +4,13 @@
     <image class="bgfix" src="/common/maixiang/list1.png"></image>
     <scroll class="scroll" scroll-y="true">
       <div class="content">
-        <text class="clock">{{ clockText }}</text>
+        <div class="arc-clock">
+          <text class="clock-char clock-1">{{ clockChars[0] }}</text>
+          <text class="clock-char clock-2">{{ clockChars[1] }}</text>
+          <text class="clock-char clock-3">{{ clockChars[2] }}</text>
+          <text class="clock-char clock-4">{{ clockChars[3] }}</text>
+          <text class="clock-char clock-5">{{ clockChars[4] }}</text>
+        </div>
         <text class="title">这就是说...</text>
 
         <div class="card" if="{{ hasData }}">
@@ -74,13 +80,14 @@ function plainExplain(d) {
 
 export default {
   private: {
-    clockText: '--:--',
     hasData: false,
-    explainText: ''
+    explainText: '',
+    clockChars: ['-', '-', ':', '-', '-']
   },
 
   onInit() {
     this._clockTimer = null;
+    this._startClock();
     const g = this.$app.$def.globalData;
 
     // 优先复用全局诊断缓存，否则读今日数据重新诊断
@@ -108,21 +115,34 @@ export default {
   },
 
   onShow() {
-    const tick = () => {
-      const n = new Date();
-      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
-    };
-    tick();
-    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
+    this._startClock();
   },
 
   onHide() {
-    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+    this._stopClock();
   },
 
   onDestroy() {
-    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
-  }
+    this._stopClock();
+  },
+
+  _startClock() {
+    const tick = () => {
+      const now = new Date();
+      const time = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+      this.clockChars = time.split('');
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 10000);
+  },
+
+  _stopClock() {
+    if (this._clockTimer) {
+      clearInterval(this._clockTimer);
+      this._clockTimer = null;
+    }
+  },
+
 }
 </script>
 
@@ -151,13 +171,20 @@ export default {
   padding: 0 0 60px 0;
 }
 
-.clock {
-  width: 100%;
-  text-align: center;
-  font-size: 28px;
-  color: #C09040;
-  margin-top: 20px;
+.arc-clock {
+  width: 480px;
+  height: 44px;
+  position: relative;
+  top: 0px;
+  justify-content: center;
 }
+
+.clock-char { width: 22px; height: 42px; text-align: center; font-size: 30px; font-weight: bold; color: rgba(110, 91, 65, 0.72); transform-origin: 11px 21px; }
+.clock-1 { top: 4px; transform: rotate(-10deg); }
+.clock-2 { top: 1px; transform: rotate(-5deg); }
+.clock-3 { top: -3px; }
+.clock-4 { top: 1px; transform: rotate(5deg); }
+.clock-5 { top: 4px; transform: rotate(10deg); }
 
 .title {
   width: 100%;

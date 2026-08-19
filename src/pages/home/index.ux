@@ -71,7 +71,6 @@ import { diagnosePulse } from '../../utils/pulse_diagnosis'
 
 export default {
   private: {
-    clockChars: ['-', '-', ':', '-', '-'],
     hasData: false,
     radarReady: false,
     waveReady: false,
@@ -84,13 +83,23 @@ export default {
     dimLabels: ['脉率', '节律', '力度', '宽度', '张力', '呼吸律'],
     dimRatios: [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
     organLabels: ['心', '肝', '脾', '肺', '肾'],
-    organRatios: [0.05, 0.05, 0.05, 0.05, 0.05]
+    organRatios: [0.05, 0.05, 0.05, 0.05, 0.05],
+    clockChars: ['-', '-', ':', '-', '-']
   },
 
   onInit() {
     console.log('[HOME][01] onInit enter');
     this._clockTimer = null;
+    this._loadingDiagnosis = false;
+    this._loadToken = 0;
     this._storage = new HrvStorageManager();
+    const globalData = this.$app.$def.globalData;
+    // 当前 Home 实例会主动完成一次加载，刷新标记在这里一次性消费，
+    // 避免首次加载期间 onShow 未消费，返回其他页面后再次触发读取。
+    globalData.homeNeedsRefresh = false;
+    if (globalData.lastDiagnosis && globalData.lastDiagnosisTs > 0) {
+      this._applyDiagnosis(globalData.lastDiagnosis);
+    }
     this._startClock();
     this._loadLatestDiagnosis();
     console.log('[HOME][02] onInit exit');
@@ -103,7 +112,8 @@ export default {
   onShow() {
     console.log('[HOME][04] onShow');
     this._startClock();
-    if (this._initialized) this._loadLatestDiagnosis();
+    // 返回 Home 只恢复显示，不重新读盘；测量完成会通过 replace 新建 Home，
+    // 在新实例的 onInit 中完成一次加载，避免返回页面时出现空态/数据态交替。
   },
 
   onHide() {
@@ -117,19 +127,25 @@ export default {
   },
 
   _loadLatestDiagnosis() {
+    if (this._loadingDiagnosis) return;
+    this._loadingDiagnosis = true;
+    const loadToken = ++this._loadToken;
     this._initialized = true;
     console.log('[HOME][07] storage init begin');
     this._storage.init(() => {
       this._storage.getTodayData((records) => {
+        if (loadToken !== this._loadToken) return;
         const list = records || [];
         console.log('[HOME][08] today records=' + list.length);
         if (!list.length) {
-          this._showEmptyState();
+          if (!this.hasData) this._showEmptyState();
+          this._loadingDiagnosis = false;
           return;
         }
         const latest = list[list.length - 1];
         if (!latest || !latest.metrics) {
-          this._showEmptyState();
+          if (!this.hasData) this._showEmptyState();
+          this._loadingDiagnosis = false;
           return;
         }
         try {
@@ -147,15 +163,16 @@ export default {
           this._applyDiagnosis(diagnosis);
         } catch (error) {
           console.log('[HOME][11] diagnosis failed=' + error);
-          this._showEmptyState();
+          if (!this.hasData) this._showEmptyState();
         }
+        this._loadingDiagnosis = false;
       });
     });
   },
 
   _applyDiagnosis(diagnosis) {
     if (!diagnosis || !diagnosis.mainPulse) {
-      this._showEmptyState();
+      if (!this.hasData) this._showEmptyState();
       return;
     }
     const pulse = diagnosis.mainPulse;
@@ -197,39 +214,29 @@ export default {
   },
 
   _refreshRadars() {
-    this.radarReady = false;
-    setTimeout(() => {
-      this.radarReady = true;
-      console.log('[HOME][13A] radar components refreshed');
-    }, 0);
+    if (!this.radarReady) this.radarReady = true;
+    console.log('[HOME][13A] radar data refreshed without remount');
   },
 
   _refreshWave() {
-    this.waveReady = false;
-    setTimeout(() => {
-      this.waveReady = true;
-      console.log('[HOME][13B] pulse wave refreshed, type=' + this.pulseType);
-    }, 0);
+    if (!this.waveReady) this.waveReady = true;
+    console.log('[HOME][13B] pulse wave data refreshed without remount, type=' + this.pulseType);
   },
 
   _startClock() {
-    const updateClock = () => {
+    const tick = () => {
       const now = new Date();
       const time = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
       this.clockChars = time.split('');
     };
-    updateClock();
-    if (!this._clockTimer) {
-      this._clockTimer = setInterval(updateClock, 10000);
-      console.log('[HOME][14] clock timer created');
-    }
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 10000);
   },
 
   _stopClock() {
     if (this._clockTimer) {
       clearInterval(this._clockTimer);
       this._clockTimer = null;
-      console.log('[HOME][15] clock timer cleared');
     }
   },
 

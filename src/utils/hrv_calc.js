@@ -9,33 +9,60 @@ export class HRVCalculator {
     this.bpmBuffer = [];       // 原始 BPM 序列，用于熵/频段/RSA 计算
     this.isCollecting = false;
     this.filterEnabled = true;
-    this.FILTER_WINDOW_SIZE = 5;
-    this.FILTER_THRESHOLD = 0.2;
+    this.FILTER_WINDOW_SIZE = 7;
+    this.FILTER_THRESHOLD = 0.35;
+    this.MIN_BPM = 35;
+    this.MAX_BPM = 220;
     this.recentValidRR = [];
+    this.rawSampleCount = 0;
+    this.invalidDataPoints = 0;
     this.rejectedDataPoints = 0;
+    this.outlierDataPoints = 0;
+    this.consecutiveOutliers = 0;
   }
 
   bpmToRR(bpm) { return bpm > 0 ? 60000 / bpm : null; }
 
   // 每收到一条心率样本调用一次
   pushBpm(bpm) {
-    if (!this.isCollecting) return;
-    if (bpm <= 0 || bpm === 255) return;
-    if (bpm < 35 || bpm > 200) return; // 生理范围过滤：剔除明显伪迹
+    if (!this.isCollecting) return false;
+    this.rawSampleCount++;
 
-    this.bpmBuffer.push(bpm);
+    const value = Number(bpm);
+    if (!isFinite(value) || value <= 0 || value === 255 || value < this.MIN_BPM || value > this.MAX_BPM) {
+      this.invalidDataPoints++;
+      return false;
+    }
 
-    const rr = this.bpmToRR(bpm);
-    if (rr === null) return;
+    this.bpmBuffer.push(value);
+
+    const rr = this.bpmToRR(value);
+    if (rr === null) return false;
 
     if (!this.filterEnabled || this.recentValidRR.length < this.FILTER_WINDOW_SIZE) {
       this.acceptRR(rr);
+      return true;
     } else {
-      const avg = this.recentValidRR.reduce((a, b) => a + b, 0) / this.recentValidRR.length;
-      if (Math.abs(rr - avg) < avg * this.FILTER_THRESHOLD) {
+      const sorted = this.recentValidRR.slice().sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      // 既允许真实心率变化，也能过滤明显伪迹。绝对下限避免低心率时阈值过窄。
+      const tolerance = Math.max(median * this.FILTER_THRESHOLD, 180);
+      if (Math.abs(rr - median) <= tolerance) {
         this.acceptRR(rr);
+        return true;
       } else {
+        this.outlierDataPoints++;
+        this.consecutiveOutliers++;
+
+        // 连续异常通常意味着心率发生了真实变化。第二个连续异常值开始
+        // 重新接受，避免旧基准把后续数据永久锁死。
+        if (this.consecutiveOutliers >= 2) {
+          this.acceptRR(rr);
+          this.consecutiveOutliers = 0;
+          return true;
+        }
         this.rejectedDataPoints++;
+        return false;
       }
     }
   }
@@ -48,7 +75,38 @@ export class HRVCalculator {
 
   start() { if (!this.isCollecting) { this.reset(); this.isCollecting = true; } }
   stop() { this.isCollecting = false; }
-  reset() { this.rrIntervals = []; this.bpmBuffer = []; this.recentValidRR = []; this.rejectedDataPoints = 0; }
+  reset() {
+    this.rrIntervals = [];
+    this.bpmBuffer = [];
+    this.recentValidRR = [];
+    this.rawSampleCount = 0;
+    this.invalidDataPoints = 0;
+    this.rejectedDataPoints = 0;
+    this.outlierDataPoints = 0;
+    this.consecutiveOutliers = 0;
+  }
+
+  getQuality() {
+    const received = this.rawSampleCount;
+    const valid = this.rrIntervals.length;
+    const acceptedRatio = received > 0 ? valid / received : 0;
+    const outlierRatio = received > 0 ? this.outlierDataPoints / received : 0;
+    let level = 'unknown';
+    if (received >= 30 && valid >= 30) {
+      if (acceptedRatio >= 0.8 && outlierRatio < 0.15) level = 'good';
+      else if (acceptedRatio >= 0.6) level = 'fair';
+      else level = 'poor';
+    }
+    return {
+      received,
+      valid,
+      acceptedRatio: +acceptedRatio.toFixed(3),
+      outlierRatio: +outlierRatio.toFixed(3),
+      rejected: this.rejectedDataPoints,
+      invalid: this.invalidDataPoints,
+      level
+    };
+  }
 
   calculateMeanRR(rr) { return rr.length === 0 ? null : rr.reduce((a, b) => a + b, 0) / rr.length; }
 
@@ -116,7 +174,7 @@ export class HRVCalculator {
   }
 
   getHrvMetrics() {
-    if (this.rrIntervals.length < 10) return null;
+    if (this.rrIntervals.length < 30) return null;
     const rr = this.rrIntervals;
     const meanRR = this.calculateMeanRR(rr);
     const sdnn = this.calculateSDNN(rr);

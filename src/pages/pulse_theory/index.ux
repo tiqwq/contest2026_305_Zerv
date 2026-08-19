@@ -85,7 +85,15 @@
     </scroll>
     </swiper>
     <!-- 顶部时间（浮层，不随翻页） -->
-    <text class="clock">{{ clockText }}</text>
+    <div class="clock-layer">
+      <div class="arc-clock">
+        <text class="clock-char clock-1">{{ clockChars[0] }}</text>
+        <text class="clock-char clock-2">{{ clockChars[1] }}</text>
+        <text class="clock-char clock-3">{{ clockChars[2] }}</text>
+        <text class="clock-char clock-4">{{ clockChars[3] }}</text>
+        <text class="clock-char clock-5">{{ clockChars[4] }}</text>
+      </div>
+    </div>
   </stack>
 </template>
 
@@ -103,27 +111,12 @@ export default {
   private: {
     t: {},
     pulses: [],
-    clockText: '--:--'
-  },
-
-  onShow() {
-    const tick = () => {
-      const n = new Date();
-      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
-    };
-    tick();
-    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
-  },
-
-  onHide() {
-    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
-  },
-
-  onDestroy() {
-    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+    clockChars: ['-', '-', ':', '-', '-'],
   },
 
   onInit() {
+    this._clockTimer = null;
+    this._startClock();
     this.t = {
       disclaimer: getText('pulse_theory_disclaimer'),
       title: getText('pulse_theory'),
@@ -165,6 +158,35 @@ export default {
       desc: getText('pulse_desc_' + key),
       nature: (PULSE_NATURE[key] || '') + '脉'
     }));
+  },
+
+  onShow() {
+    this._startClock();
+  },
+
+  onHide() {
+    this._stopClock();
+  },
+
+  onDestroy() {
+    this._stopClock();
+  },
+
+  _startClock() {
+    const tick = () => {
+      const now = new Date();
+      const time = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+      this.clockChars = time.split('');
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 10000);
+  },
+
+  _stopClock() {
+    if (this._clockTimer) {
+      clearInterval(this._clockTimer);
+      this._clockTimer = null;
+    }
   }
 }
 </script>
@@ -178,6 +200,15 @@ export default {
 .bgfix {
   width: 480px;
   height: 480px;
+}
+
+.clock-layer {
+  position: absolute;
+  left: 0px;
+  /* 圆形屏幕顶部有安全裁切区，时间下移后保留完整字形高度 */
+  top: 14px;
+  width: 480px;
+  height: 44px;
 }
 
 .swiper {
@@ -194,17 +225,20 @@ export default {
   flex-direction: column;
 }
 
-.clock {
-  position: absolute;
-  top: 12px;
-  left: 0;
-  width: 100%;
-  text-align: center;
-  font-size: 26px;
-  color: #C09040;
-  background-color: #E8DCBE;
-  padding-bottom: 2px;
+.arc-clock {
+  width: 480px;
+  height: 44px;
+  position: relative;
+  top: 0px;
+  justify-content: center;
 }
+
+.clock-char { width: 22px; height: 42px; text-align: center; font-size: 30px; font-weight: bold; color: rgba(110, 91, 65, 0.72); transform-origin: 11px 21px; }
+.clock-1 { top: 4px; transform: rotate(-10deg); }
+.clock-2 { top: 1px; transform: rotate(-5deg); }
+.clock-3 { top: -3px; }
+.clock-4 { top: 1px; transform: rotate(5deg); }
+.clock-5 { top: 4px; transform: rotate(10deg); }
 
 .col {
   flex-direction: column;

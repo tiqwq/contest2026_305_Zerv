@@ -1,5 +1,5 @@
 <template>
-  <div class="root">
+  <stack class="root">
     <!-- 无数据空态：不展示演示分值 -->
     <div class="empty" if="{{ !hasData }}">
       <image class="bg" src="/common/maixiang/list1.png"></image>
@@ -28,7 +28,7 @@
         </div>
       </div>
     </swiper>
-  </div>
+  </stack>
 </template>
 
 <script>

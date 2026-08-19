@@ -5,7 +5,13 @@
     <scroll class="scroll" scroll-y="true">
       <div class="content">
         <!-- 顶部时间 -->
-        <text class="clock">{{ clockText }}</text>
+        <div class="arc-clock">
+          <text class="clock-char clock-1">{{ clockChars[0] }}</text>
+          <text class="clock-char clock-2">{{ clockChars[1] }}</text>
+          <text class="clock-char clock-3">{{ clockChars[2] }}</text>
+          <text class="clock-char clock-4">{{ clockChars[3] }}</text>
+          <text class="clock-char clock-5">{{ clockChars[4] }}</text>
+        </div>
         <!-- 固定顶部标题：引子 + 主标题 + 金色饰线 -->
         <text class="eyebrow">四时调养</text>
         <text class="title">养生建议</text>
@@ -37,27 +43,12 @@ export default {
   private: {
     recs: [],
     hasData: false,
-    clockText: '--:--'
-  },
-
-  onShow() {
-    const tick = () => {
-      const n = new Date();
-      this.clockText = ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2);
-    };
-    tick();
-    if (!this._clockTimer) this._clockTimer = setInterval(tick, 60000);
-  },
-
-  onHide() {
-    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
-  },
-
-  onDestroy() {
-    if (this._clockTimer) { clearInterval(this._clockTimer); this._clockTimer = null; }
+    clockChars: ['-', '-', ':', '-', '-'],
   },
 
   onInit() {
+    this._clockTimer = null;
+    this._startClock();
     // 只基于真实测量后的规则结果展示，不用默认文案伪装个性化结果
     const diag = this.$app.$def.globalData.lastDiagnosis;
     if (diag && diag.recommendations && diag.recommendations.length > 0) {
@@ -66,6 +57,35 @@ export default {
         category: r.category,
         advice: r.advice
       }));
+    }
+  },
+
+  onShow() {
+    this._startClock();
+  },
+
+  onHide() {
+    this._stopClock();
+  },
+
+  onDestroy() {
+    this._stopClock();
+  },
+
+  _startClock() {
+    const tick = () => {
+      const now = new Date();
+      const time = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+      this.clockChars = time.split('');
+    };
+    tick();
+    if (!this._clockTimer) this._clockTimer = setInterval(tick, 10000);
+  },
+
+  _stopClock() {
+    if (this._clockTimer) {
+      clearInterval(this._clockTimer);
+      this._clockTimer = null;
     }
   }
 }
@@ -98,13 +118,20 @@ export default {
 
 .eyebrow { font-size: 20px; color: #9C8560; }
 
-.clock {
-  width: 100%;
-  text-align: center;
-  font-size: 28px;
-  color: #C09040;
-  margin-bottom: 14px;
+.arc-clock {
+  width: 480px;
+  height: 44px;
+  position: relative;
+  top: -20px;
+  justify-content: center;
 }
+
+.clock-char { width: 22px; height: 42px; text-align: center; font-size: 30px; font-weight: bold; color: rgba(110, 91, 65, 0.72); transform-origin: 11px 21px; }
+.clock-1 { top: 4px; transform: rotate(-10deg); }
+.clock-2 { top: 1px; transform: rotate(-5deg); }
+.clock-3 { top: -3px; }
+.clock-4 { top: 1px; transform: rotate(5deg); }
+.clock-5 { top: 4px; transform: rotate(10deg); }
 .title { font-size: 36px; color: #8A5A20; margin-top: 4px; }
 .title-line {
   width: 46px; height: 3px; border-radius: 2px;

@@ -26,7 +26,10 @@ export function getRecent(dataTypes) {
         timeStamp: it.data && it.data.timeStamp
       }))
     )
-    .catch(() => [])
+    .catch((error) => {
+      console.log('[health] getRecentSamples failed: ' + JSON.stringify(error));
+      return [];
+    })
 }
 
 /**

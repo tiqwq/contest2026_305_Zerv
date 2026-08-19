@@ -113,6 +113,8 @@ export default {
 .radar-box {
   width: 346px;
   height: 228px;
+  /* 让网格 PNG、数据边点和标签都相对雷达盒定位，避免被父级 scroll 坐标系带走 */
+  position: relative;
 }
 
 .grid {
