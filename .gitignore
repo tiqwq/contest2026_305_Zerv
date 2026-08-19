@@ -2,7 +2,10 @@ node_modules
 dist
 build
 .history
-package-lock.json
 *.log
 .env
 .env.local
+.mimocode/
+.reasonix/
+.vscode/settings.json
+reasonix.toml
