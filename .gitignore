@@ -3,3 +3,6 @@ dist
 build
 .history
 package-lock.json
+*.log
+.env
+.env.local
