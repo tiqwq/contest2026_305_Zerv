@@ -63,7 +63,7 @@
     }
   },
   "display": {
-    "backgroundColor": "#E8DCBE",
-    "textColor": "#5A4632"
+    "backgroundColor": "#000000",
+    "textColor": "#E8DCBE"
   }
 }
